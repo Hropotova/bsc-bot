@@ -4,18 +4,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api/crypto.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/api/scan.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/constants/erc2_abi.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/index.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/options/contractRangeDateParser.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/options/contractSingleDateParser.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/options/walletParser.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/options/walletsParser.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/honeypotChecker.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/services/transactionsDecod.js" afterDir="false" />
+    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="init commit">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/options/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/options/walletParser.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -80,11 +71,24 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1733850539840</updated>
-      <workItem from="1733850540937" duration="3458000" />
+      <workItem from="1733850540937" duration="4336000" />
     </task>
+    <task id="LOCAL-00001" summary="init commit">
+      <option name="closed" value="true" />
+      <created>1733862092055</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1733862092055</updated>
+    </task>
+    <option name="localTasksCounter" value="2" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="init commit" />
+    <option name="LAST_COMMIT_MESSAGE" value="init commit" />
   </component>
 </project>

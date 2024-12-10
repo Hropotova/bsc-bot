@@ -33,7 +33,7 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 if (addressListTransactions.length < process.env.TRANSACTIONS_COUNT) {
                     const addressTokenTransactions = await getAddressTokenTransaction(address);
-                    console.log('addressTokenTransactions', addressTokenTransactions)
+
                     const tokenContracts = [...new Set(addressTokenTransactions.map(tx => tx.contractAddress))].slice(0.10);
                     const groupedTransactions = tokenContracts.map(contractAddress => {
                         return addressTokenTransactions.filter(tx => tx.contractAddress === contractAddress);
