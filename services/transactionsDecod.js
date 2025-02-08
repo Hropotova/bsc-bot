@@ -111,6 +111,7 @@ const transactionsDecod = async (contract, address) => {
                 }
 
                 const transfers = await getInternalTransactions(transaction.hash);
+                console.log('transfers', transfers)
                 const receipt = await web3.eth.getTransactionReceipt(transaction.hash);
 
                 const currentTransferLogs = [];
@@ -153,6 +154,8 @@ const transactionsDecod = async (contract, address) => {
                         trackTransfer(decoded, log, address, transfer, transaction.hash);
                     }
                 }
+
+                console.log('currentTransferLogs', currentTransferLogs)
 
                 if (transfers.length > 0) {
                     if (currentTransferLogs.some(i => i.from.toUpperCase() === address.toUpperCase())) {

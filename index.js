@@ -3,9 +3,9 @@ const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
 const {walletParser} = require('./options/walletParser');
-const {walletsParser} = require('./options/walletsParser');
 const {contractSingleDateParser} = require('./options/contractSingleDateParser');
 const {contractRangeDateParser} = require("./options/contractRangeDateParser");
+const {tokenHolders} = require("./options/tokenHolders");
 
 const app = express();
 const token = process.env.TELEGRAM_TOKEN;
@@ -22,7 +22,7 @@ bot.onText(/\/start/, (msg) => {
             inline_keyboard: [
                 [{text: 'Wallet address', callback_data: 'option1'}],
                 [{text: 'Contract address', callback_data: 'option2'}],
-                [{text: 'Wallet addresses', callback_data: 'option3'}],
+                [{text: 'Token holders', callback_data: 'option3'}],
             ]
         })
     };
@@ -41,7 +41,7 @@ bot.on('callback_query', (callbackQuery) => {
     } else if (data === 'option2') {
         bot.sendMessage(chatId, 'You chose contract address. Please send me a contract address.');
     } else if (data === 'option3') {
-        bot.sendMessage(chatId, 'You chose wallet addresses. Please send me a wallet addresses.');
+        bot.sendMessage(chatId, 'You chose token holders. Please send me a token addresses.');
     } else if (data === 'single_date') {
         bot.sendMessage(chatId, 'Please enter the date in format endDate: 2023-09-03T00:00:00Z.');
     } else if (data === 'range_date') {
@@ -79,7 +79,13 @@ bot.on('message', async (msg) => {
         } else if (userState[chatId] === 'range_date') {
             await contractRangeDateParser(message, bot, chatId, contractState);
         } else if (userState[chatId] === 'option3') {
-            await walletsParser(message, bot, chatId);
+            if (!contractState) {
+                contractState = message;
+                bot.sendMessage(chatId, 'Please enter a count holders.');
+            } else {
+                await tokenHolders(Number(message), bot, chatId, contractState);
+                contractState = '';
+            }
         }
 
     } catch (error) {
@@ -90,7 +96,7 @@ bot.on('message', async (msg) => {
                 inline_keyboard: [
                     [{text: 'Wallet address', callback_data: 'option1'}],
                     [{text: 'Contract address', callback_data: 'option2'}],
-                    [{text: 'Wallet addresses', callback_data: 'option3'}],
+                    [{text: 'Token holders', callback_data: 'option3'}],
                 ]
             })
         };
