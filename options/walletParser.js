@@ -1,5 +1,8 @@
+require('dotenv').config();
 const fs = require('fs');
 const ExcelJS = require('exceljs');
+const Web3 = require('web3');
+const Bottleneck = require('bottleneck');
 
 const {
     getSolanaPrice,
@@ -7,6 +10,13 @@ const {
     getHistoryTrades,
     getTrades,
 } = require('../api');
+
+const web3 = new Web3(process.env.PROVIDER);
+
+const limiter = new Bottleneck({
+    minTime: 200,
+    maxConcurrent: 1,
+});
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
@@ -36,140 +46,155 @@ const walletParser = async (addresses, bot, chatId) => {
             const tokenSummary = {};
 
             await Promise.all(
-                transactionsHistory.map(async (transaction) => {
-                    const {quote, base} = transaction;
+                transactionsHistory.map((transaction) =>
+                    limiter.schedule(async () => {
 
-                    const isSol = (token) => token.symbol === 'wbnb';
-                    const isReceived = (token) => token.ui_change_amount > 0;
-                    const isSpent = (token) => token.ui_change_amount < 0;
+                        const {quote, base} = transaction;
+                        const transactionCheck = await web3.eth.getTransaction(transaction.tx_hash);
+                        const receipt = await web3.eth.getTransactionReceipt(transaction.tx_hash);
+                        const methodId = transactionCheck.input.slice(0, 10);
+                        const checkTransfer = (methodId === '0xa9059cbb');
 
-                    const solIsQuote = isSol(quote);
-                    const solIsBase = isSol(base);
-
-                    if (!solIsQuote && !solIsBase) {
-                        const quoteInSol = (quote.ui_amount * (quote.nearest_price)) / bnbPrice;
-                        const baseInSol = (base.ui_amount * (base.nearest_price)) / bnbPrice;
-
-                        const fromToken = base.type_swap === 'from' ? base : quote;
-                        const toToken = base.type_swap === 'to' ? base : quote;
-
-                        const fromTokenAddress = fromToken.address;
-                        const fromTokenSymbol = fromToken.symbol;
-                        const toTokenAddress = toToken.address;
-                        const toTokenSymbol = toToken.symbol;
-
-                        if (!tokenSummary[fromTokenAddress]) {
-                            tokenSummary[fromTokenAddress] = {
-                                tokenSymbol: fromTokenSymbol,
-                                received: 0,
-                                spent: 0,
-                                profit: 0,
-                                transactions: 0,
-                                swapToken: 0,
-                            };
-                        }
-                        if (!tokenSummary[toTokenAddress]) {
-                            tokenSummary[toTokenAddress] = {
-                                tokenSymbol: toTokenSymbol,
-                                received: 0,
-                                spent: 0,
-                                profit: 0,
-                                transactions: 0,
-                                swapToken: 0,
-                            };
+                        let transfer;
+                        if (checkTransfer) {
+                            if (receipt.from.toUpperCase() === address.toUpperCase()) {
+                                transfer = 'out';
+                            } else if (receipt.to.toUpperCase() === address.toUpperCase()) {
+                                transfer = 'in';
+                            }
+                        } else {
+                            transfer = false;
                         }
 
-                        tokenSummary[fromTokenAddress].spent += fromToken === base ? baseInSol : quoteInSol;
-                        tokenSummary[toTokenAddress].received += toToken === base ? baseInSol : quoteInSol;
+                        const isSol = (token) => token.symbol === 'wbnb';
+                        const isReceived = (token) => token.ui_change_amount > 0;
+                        const isSpent = (token) => token.ui_change_amount < 0;
 
-                        tokenSummary[toTokenAddress].spent += toToken === base ? baseInSol : quoteInSol;
+                        const solIsQuote = isSol(quote);
+                        const solIsBase = isSol(base);
 
-                        tokenSummary[fromTokenAddress].transactions += 1;
-                        tokenSummary[toTokenAddress].transactions += 1;
+                        if (!solIsQuote && !solIsBase) {
+                            const quoteInSol = (quote.ui_amount * (quote.nearest_price)) / bnbPrice;
+                            const baseInSol = (base.ui_amount * (base.nearest_price)) / bnbPrice;
 
-                        tokenSummary[fromTokenAddress].swapToken += fromToken === base ? baseInSol : quoteInSol;
+                            const fromToken = base.type_swap === 'from' ? base : quote;
+                            const toToken = base.type_swap === 'to' ? base : quote;
 
-                        tokenSummary[fromTokenAddress].profit =
-                            tokenSummary[fromTokenAddress].received - tokenSummary[fromTokenAddress].spent;
+                            const fromTokenAddress = fromToken.address;
+                            const fromTokenSymbol = fromToken.symbol;
+                            const toTokenAddress = toToken.address;
+                            const toTokenSymbol = toToken.symbol;
 
-                        tokenSummary[toTokenAddress].profit =
-                            tokenSummary[toTokenAddress].received - tokenSummary[toTokenAddress].spent;
-                    } else {
-                        const tokenAddress = solIsQuote ? base.address : quote.address;
-                        const tokenSymbol = solIsQuote ? base.symbol : quote.symbol;
-                        const isTransactionReceived = solIsQuote ? isReceived(quote) : isReceived(base);
-                        const isTransactionSpent = solIsQuote ? isSpent(quote) : isSpent(base);
+                            if (!tokenSummary[fromTokenAddress]) {
+                                tokenSummary[fromTokenAddress] = {
+                                    tokenSymbol: fromTokenSymbol,
+                                    received: 0,
+                                    spent: 0,
+                                    profit: 0,
+                                    transactions: 0,
+                                    swapToken: 0,
+                                };
+                            }
+                            if (!tokenSummary[toTokenAddress]) {
+                                tokenSummary[toTokenAddress] = {
+                                    tokenSymbol: toTokenSymbol,
+                                    received: 0,
+                                    spent: 0,
+                                    profit: 0,
+                                    transactions: 0,
+                                    swapToken: 0,
+                                };
+                            }
 
-                        if (!tokenSummary[tokenAddress]) {
-                            tokenSummary[tokenAddress] = {
-                                tokenSymbol,
-                                received: 0,
-                                spent: 0,
-                                profit: 0,
-                                transactions: 0,
-                                swapToken: 0,
-                            };
+                            tokenSummary[fromTokenAddress].spent += fromToken === base ? baseInSol : quoteInSol;
+                            tokenSummary[toTokenAddress].received += toToken === base ? baseInSol : quoteInSol;
+                            tokenSummary[toTokenAddress].spent += toToken === base ? baseInSol : quoteInSol;
+                            tokenSummary[fromTokenAddress].transactions += 1;
+                            tokenSummary[toTokenAddress].transactions += 1;
+                            tokenSummary[fromTokenAddress].swapToken += fromToken === base ? baseInSol : quoteInSol;
+                            tokenSummary[fromTokenAddress].profit =
+                                tokenSummary[fromTokenAddress].received - tokenSummary[fromTokenAddress].spent;
+                            tokenSummary[fromTokenAddress].transfer = transfer;
+                            tokenSummary[toTokenAddress].profit =
+                                tokenSummary[toTokenAddress].received - tokenSummary[toTokenAddress].spent;
+                            tokenSummary[toTokenAddress].transfer = transfer;
+                        } else {
+                            const tokenAddress = solIsQuote ? base.address : quote.address;
+                            const tokenSymbol = solIsQuote ? base.symbol : quote.symbol;
+                            const isTransactionReceived = solIsQuote ? isReceived(quote) : isReceived(base);
+                            const isTransactionSpent = solIsQuote ? isSpent(quote) : isSpent(base);
+
+                            if (!tokenSummary[tokenAddress]) {
+                                tokenSummary[tokenAddress] = {
+                                    tokenSymbol,
+                                    received: 0,
+                                    spent: 0,
+                                    profit: 0,
+                                    transactions: 0,
+                                    swapToken: 0,
+                                };
+                            }
+
+                            const tokenAmount = solIsQuote ? quote.ui_amount : base.ui_amount;
+
+                            if (isTransactionReceived) {
+                                tokenSummary[tokenAddress].received += tokenAmount;
+                            } else if (isTransactionSpent) {
+                                tokenSummary[tokenAddress].spent += tokenAmount;
+                            }
+
+                            tokenSummary[tokenAddress].transactions += 1;
+                            tokenSummary[tokenAddress].profit =
+                                tokenSummary[tokenAddress].received - tokenSummary[tokenAddress].spent;
+                            tokenSummary[tokenAddress].transfer = transfer;
                         }
-
-                        const tokenAmount = solIsQuote ? quote.ui_amount : base.ui_amount;
-
-                        if (isTransactionReceived) {
-                            tokenSummary[tokenAddress].received += tokenAmount;
-                        } else if (isTransactionSpent) {
-                            tokenSummary[tokenAddress].spent += tokenAmount;
-                        }
-
-                        tokenSummary[tokenAddress].transactions += 1;
-                        tokenSummary[tokenAddress].profit =
-                            tokenSummary[tokenAddress].received - tokenSummary[tokenAddress].spent;
-                    }
-                })
+                    })
+                )
             );
+
 
             console.log('CALCULATED DATA', tokenSummary)
 
             for (const token in tokenSummary) {
-                if (token !== '0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c' && token !== '0x55d398326f99059fF775485246999027B3197955' && token !== '0xe9e7CEA3DedcA5984780Bafc599bD69ADd087D56' && token !== '0x0E09FaBB73Bd3Ade0a17ECC321fD13a19e81cE82') {
-                    const {spent, received, tokenSymbol, swapToken} = tokenSummary[token];
-                    const profit = received - spent;
+                const {spent, received, tokenSymbol, swapToken} = tokenSummary[token];
+                const profit = received - spent;
 
-                    const tokenBalance = tokenBalances.find(i => i.address === token);
-                    let tokenValue = tokenBalance ? tokenBalance.valueUsd : 0;
-                    let tradeSymbol
+                const tokenBalance = tokenBalances.find(i => i.address === token);
+                let tokenValue = tokenBalance ? tokenBalance.valueUsd : 0;
+                let tradeSymbol
 
-                    const trades = await getHistoryTrades(token, 1000000000000000);
+                const trades = await getHistoryTrades(token, 1000000000000000);
 
-                    if (trades && trades.length > 0) {
-                        if (tokenValue === undefined) {
-                            tokenValue = tokenBalance?.uiAmount * trades[0]?.base?.price;
-                        }
-
-                        if (!tokenSymbol) {
-                            tradeSymbol = trades[0]?.base?.symbol;
-                        }
-
-                        const bnbBalance = tokenValue / bnbPrice;
-
-                        const pnl = bnbBalance + (received - spent);
-
-                        console.log(`TOKEN ${tokenSymbol} ${token} PNL — `, pnl);
-
-                        let transfer;
-
-                        if (bnbBalance === 0 && spent > 0 && received === 0) {
-                            transfer = true
-                        } else if (spent === 0) {
-                            transfer = true
-                        }
-
-                        results.push({
-                            tokenName: tokenSymbol ? tokenSymbol : tradeSymbol,
-                            pnl: Number(pnl.toFixed(2)),
-                            spent: Number(Math.abs(spent.toFixed(2))),
-                            contractAddress: token,
-                            transfer: transfer ? 'TRUE' : 'FALSE',
-                        });
+                if (trades && trades.length > 0) {
+                    if (tokenValue === undefined) {
+                        tokenValue = tokenBalance?.uiAmount * trades[0]?.base?.price;
                     }
+
+                    if (!tokenSymbol) {
+                        tradeSymbol = trades[0]?.base?.symbol;
+                    }
+
+                    const bnbBalance = tokenValue / bnbPrice;
+
+                    const pnl = bnbBalance + (received - spent);
+
+                    console.log(`TOKEN ${tokenSymbol} ${token} PNL — `, pnl);
+
+                    let transfer;
+
+                    if (bnbBalance === 0 && spent > 0 && received === 0) {
+                        transfer = true
+                    } else if (spent === 0) {
+                        transfer = true
+                    }
+
+                    results.push({
+                        tokenName: tokenSymbol ? tokenSymbol : tradeSymbol,
+                        pnl: Number(pnl.toFixed(2)),
+                        spent: Number(Math.abs(spent.toFixed(2))),
+                        contractAddress: token,
+                        transfer: transfer ? 'TRUE' : 'FALSE',
+                    });
                 }
             }
 
@@ -200,6 +225,12 @@ const walletParser = async (addresses, bot, chatId) => {
                 result.zScore = Number(zScore.toFixed(2))
                 result.winRate = winRate ? 'TRUE' : 'FALSE';
             });
+
+            const removeTokensEnv = process.env.REMOVE_TOKENS;
+            if (removeTokensEnv) {
+                const removeTokens = removeTokensEnv.split(',').map(token => token.trim().toLowerCase());
+                results = results.filter(result => !removeTokens.includes(result.contractAddress.toLowerCase()));
+            }
 
             const workbook = new ExcelJS.Workbook();
             const worksheet = workbook.addWorksheet('Results');
