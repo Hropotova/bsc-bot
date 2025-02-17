@@ -187,6 +187,17 @@ async function getHistoryTokenPrice(address, timeFrom, retryCount = 0) {
     }
 }
 
+async function getAddressListTransaction(address) {
+    try {
+        const response = await axios.get(`https://api.bscscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&apikey=${process.env.BSCSCAN_API_KEY}`);
+        return response.data.result;
+    } catch (error) {
+        console.error('Error fetching data:', error.message);
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        return getAddressListTransaction(address);
+    }
+}
+
 module.exports = {
     getSolanaPrice,
     getTokenBalances,
@@ -194,4 +205,5 @@ module.exports = {
     getTokenHistoryTransactions,
     getHistoryTokenPrice,
     getTrades,
+    getAddressListTransaction
 };
