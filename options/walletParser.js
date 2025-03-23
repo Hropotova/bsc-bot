@@ -47,9 +47,11 @@ const walletParser = async (addresses, bot, chatId) => {
                 console.log('TOKEN BALANCE — ', tokenBalances);
 
                 const tokenSummary = {};
-
+                const uniqueTransactionsHistory = transactionsHistory.filter((transaction, index, self) =>
+                    index === self.findIndex(t => t.tx_hash === transaction.tx_hash)
+                );
                 await Promise.all(
-                    transactionsHistory.map((transaction, index) =>
+                    uniqueTransactionsHistory.map((transaction, index) =>
                         limiter.schedule(async () => {
 
                             const {quote, base} = transaction;
@@ -62,7 +64,7 @@ const walletParser = async (addresses, bot, chatId) => {
                             } catch (error) {
                                 console.error("MethodId error:", error.message);
                             }
-                            console.log('trans', index)
+
                             const checkTransfer = (methodId === '0xa9059cbb');
 
                             let transfer;
@@ -163,11 +165,11 @@ const walletParser = async (addresses, bot, chatId) => {
                 );
 
 
-                console.log('CALCULATED DATA', tokenSummary)
+                console.log('CALCULATED DATA', tokenSummary);
+
 
                 for (const token in tokenSummary) {
-                    const {spent, received, tokenSymbol, swapToken} = tokenSummary[token];
-                    const profit = received - spent;
+                    const {spent, received, tokenSymbol} = tokenSummary[token];
 
                     const tokenBalance = tokenBalances.find(i => i.address === token);
                     let tokenValue = tokenBalance ? tokenBalance.valueUsd : 0;
