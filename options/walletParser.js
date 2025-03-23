@@ -53,7 +53,6 @@ const walletParser = async (addresses, bot, chatId) => {
                 await Promise.all(
                     uniqueTransactionsHistory.map((transaction, index) =>
                         limiter.schedule(async () => {
-
                             const {quote, base} = transaction;
                             const transactionCheck = await web3.eth.getTransaction(transaction.tx_hash);
                             const receipt = await web3.eth.getTransactionReceipt(transaction.tx_hash);
@@ -133,6 +132,7 @@ const walletParser = async (addresses, bot, chatId) => {
                             } else {
                                 const tokenAddress = solIsQuote ? base.address : quote.address;
                                 const tokenSymbol = solIsQuote ? base.symbol : quote.symbol;
+
                                 const isTransactionReceived = solIsQuote ? isReceived(quote) : isReceived(base);
                                 const isTransactionSpent = solIsQuote ? isSpent(quote) : isSpent(base);
 
@@ -177,9 +177,28 @@ const walletParser = async (addresses, bot, chatId) => {
 
                     const trades = await getHistoryTrades(token, 1000000000000000);
 
+                    function convertBalance(balanceStr, decimals) {
+                        const BN = web3.utils.BN;
+                        const balanceBN = new BN(balanceStr);
+                        const divisor = new BN('1' + '0'.repeat(decimals));
+
+                        // Ціла частина
+                        const whole = balanceBN.div(divisor).toString();
+                        // Дробова частина
+                        let fraction = balanceBN.mod(divisor).toString();
+
+                        // Доповнюємо дробову частину нулями, щоб отримати потрібну кількість цифр
+                        while (fraction.length < decimals) {
+                            fraction = '0' + fraction;
+                        }
+
+                        return decimals > 0 ? whole + '.' + fraction : whole;
+                    }
+
                     if (trades && trades.length > 0) {
                         if (tokenValue === undefined) {
-                            tokenValue = tokenBalance?.uiAmount * trades[0]?.base?.price;
+                            const balance = convertBalance(tokenBalance.balance, tokenBalance.decimals || 18);
+                            tokenValue = balance * trades[0]?.base?.price;
                         }
 
                         if (!tokenSymbol) {
