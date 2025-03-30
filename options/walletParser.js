@@ -9,20 +9,28 @@ const walletParser = async (addresses, bot, chatId) => {
 
     for (const address of splitAddresses) {
         try {
-            const response = await axios.get(
-                `https://deep-index.moralis.io/api/v2.2/wallets/${address}/swaps?chain=bsc&order=DESC`,
-                {
+            let cursor = null;
+            let allSwaps = [];
+
+            while (true) {
+                const url = `https://deep-index.moralis.io/api/v2.2/wallets/${address}/swaps?chain=bsc&order=DESC${cursor ? `&cursor=${cursor}` : ''}`;
+                const response = await axios.get(url, {
                     headers: {
                         accept: 'application/json',
                         'X-API-Key': API_KEY
                     }
-                }
-            );
+                });
 
-            const swaps = response.data.result || response.data;
+                const data = response.data;
+                const swaps = data.result || [];
+                allSwaps.push(...swaps);
+
+                if (!data.cursor || swaps.length < 100) break;
+                cursor = data.cursor;
+            }
+
             const tokenStats = {};
-
-            for (const swap of swaps) {
+            for (const swap of allSwaps) {
                 const { bought, sold } = swap;
                 if (!bought || !sold) continue;
 
