@@ -5,8 +5,17 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="init commit">
+      <change afterPath="$PROJECT_DIR$/api/moralis.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/crypto.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/scan.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.js" beforeDir="false" afterPath="$PROJECT_DIR$/index.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/options/contractRangeDateParser.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/options/contractSingleDateParser.js" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/options/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/options/walletParser.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/options/walletsParser.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/honeypotChecker.js" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/transactionsDecod.js" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -16,21 +25,21 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="GitHubPullRequestSearchHistory"><![CDATA[{
-  "lastFilter": {
-    "state": "OPEN",
-    "assignee": "Hropotova"
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Hropotova&quot;
   }
-}]]></component>
-  <component name="GithubPullRequestsUISettings"><![CDATA[{
-  "selectedUrlAndAccountId": {
-    "url": "https://github.com/Hropotova/bsc-bot.git",
-    "accountId": "ef8722d5-a747-4f31-a1a5-3d81191baf60"
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Hropotova/bsc-bot.git&quot;,
+    &quot;accountId&quot;: &quot;ef8722d5-a747-4f31-a1a5-3d81191baf60&quot;
   }
-}]]></component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 4
-}]]></component>
+}</component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 4
+}</component>
   <component name="ProjectId" id="2q2Ax4vtAJkznw1jwClDfBkuUpH" />
   <component name="ProjectViewState">
     <option name="hideEmptyMiddlePackages" value="true" />
@@ -40,7 +49,7 @@
   "keyToString": {
     "RunOnceActivity.ShowReadmeOnStart": "true",
     "RunOnceActivity.git.unshallow": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "new-alg",
     "last_opened_file_path": "/Users/vitalikvovcok/Documents/XPK/work/bsc-bot",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
@@ -86,6 +95,17 @@
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="init commit" />
