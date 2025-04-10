@@ -2,10 +2,16 @@ require('dotenv').config();
 const fs = require('fs');
 
 const {getWalletTokenSwaps, getWalletTokenBalances, getActiveWalletChains} = require('../api/moralis');
+const swapDateFormatter = require('../helpers/swapDateFormatter');
+const {getChainPrice} = require('../api/crypto');
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
 
+    // Get price of the chain's native token: Ethereum, Binance coin...
+    const chainPrice = await getChainPrice();
+
+    // Process each wallet address one by one
     for (const address of splitAddresses) {
         try {
             // Get all swap related transactions (buy, sell)
@@ -17,7 +23,8 @@ const walletParser = async (addresses, bot, chatId) => {
             // Get the active chains for a wallet address.
             const chains = await getActiveWalletChains(address);
 
-            const tokenStats = {};
+            // Calculate and decode swaps
+            const tokenData = {};
 
             for (const swap of swaps) {
                 const {bought, sold, blockTimestamp, transactionHash} = swap;
@@ -28,10 +35,11 @@ const walletParser = async (addresses, bot, chatId) => {
                 const boughtAddress = bought.address;
                 const soldAddress = sold.address;
 
+                // Handle BUY transactions (spending WBNB)
                 if (soldSymbol === 'WBNB') {
                     const token = boughtSymbol;
-                    if (!tokenStats[token]) {
-                        tokenStats[token] = {
+                    if (!tokenData[token]) {
+                        tokenData[token] = {
                             boughtAmount: 0,
                             soldAmount: 0,
                             wbnbSpent: 0,
@@ -41,20 +49,21 @@ const walletParser = async (addresses, bot, chatId) => {
                             trades: []
                         };
                     }
-                    tokenStats[token].boughtAmount += parseFloat(bought.amount);
-                    tokenStats[token].wbnbSpent += Math.abs(parseFloat(sold.amount));
-                    tokenStats[token].trades.push({
-                        time: blockTimestamp,
+                    tokenData[token].boughtAmount += parseFloat(bought.amount);
+                    tokenData[token].wbnbSpent += Math.abs(parseFloat(sold.amount));
+                    tokenData[token].trades.push({
+                        time: swapDateFormatter(blockTimestamp), // Formatter for date
                         hash: transactionHash,
                         action: 'buy',
                         pair: `WBNB/${token}`
                     });
                 }
 
+                // Handle SELL transactions (receiving WBNB)
                 if (boughtSymbol === 'WBNB') {
                     const token = soldSymbol;
-                    if (!tokenStats[token]) {
-                        tokenStats[token] = {
+                    if (!tokenData[token]) {
+                        tokenData[token] = {
                             boughtAmount: 0,
                             soldAmount: 0,
                             wbnbSpent: 0,
@@ -64,10 +73,10 @@ const walletParser = async (addresses, bot, chatId) => {
                             trades: []
                         };
                     }
-                    tokenStats[token].soldAmount += Math.abs(parseFloat(sold.amount));
-                    tokenStats[token].wbnbReceived += parseFloat(bought.amount);
-                    tokenStats[token].trades.push({
-                        time: blockTimestamp,
+                    tokenData[token].soldAmount += Math.abs(parseFloat(sold.amount));
+                    tokenData[token].wbnbReceived += parseFloat(bought.amount);
+                    tokenData[token].trades.push({
+                        time: swapDateFormatter(blockTimestamp), // Formatter for date
                         hash: transactionHash,
                         action: 'sell',
                         pair: `${token}/WBNB`
@@ -75,25 +84,32 @@ const walletParser = async (addresses, bot, chatId) => {
                 }
             }
 
-            const bnbPrice = balances.find(t => t.symbol === 'BNB')?.usd_price || 600;
-
+            // Convert USD balances to WBNB equivalents
             for (const token of balances) {
                 const symbol = token.symbol;
-                if (tokenStats[symbol]) {
+                if (tokenData[symbol]) {
                     const usdValue = token.usd_value || 0;
-                    const wbnbValue = usdValue / bnbPrice;
-                    tokenStats[symbol].balance = wbnbValue;
+                    tokenData[symbol].balance = usdValue / chainPrice;
                 }
             }
 
-            const walletData = {};
-            for (const [symbol, stats] of Object.entries(tokenStats)) {
+            // Add calculated data to JSON
+            const addressData = {};
+
+            for (const [symbol, stats] of Object.entries(tokenData)) {
+
+                //  // Sort token trades chronologically from oldest to newest
                 stats.trades.sort((a, b) => new Date(a.time) - new Date(b.time));
+
+                // Calculate PnL for the token: balance + (received - spent)
                 const pnl = stats.balance + (stats.wbnbReceived - stats.wbnbSpent);
 
-                walletData[stats.contractAddress] = {
+                // Add active chains to the JSON
+                addressData.activeChains = chains;
+
+                // Add token data to the JSON
+                addressData[stats.contractAddress] = {
                     symbol,
-                    activeChains: chains,
                     pnl: Number(pnl.toFixed(4)),
                     spent: Number(stats.wbnbSpent.toFixed(4)),
                     transfer: 'FALSE',
@@ -102,7 +118,7 @@ const walletParser = async (addresses, bot, chatId) => {
             }
 
             const filePath = `${address}.json`;
-            fs.writeFileSync(filePath, JSON.stringify({[address]: walletData}, null, 2));
+            fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
             const options = {
                 caption: `Results \`${address}\``,

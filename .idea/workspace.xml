@@ -4,16 +4,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="Added moralis">
-      <change afterPath="$PROJECT_DIR$/api/scan.js" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/helpers/timeSwapFormater.js" afterDir="false" />
+    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added moralis and architecture for moralis">
+      <change afterPath="$PROJECT_DIR$/helpers/swapDateFormatter.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/api/moralis.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/moralis.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/constants/erc2_abi.js" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/index.js" beforeDir="false" afterPath="$PROJECT_DIR$/index.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/options/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/services/walletParser.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package-lock.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/helpers/timeSwapFormater.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/crypto.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/services/walletParser.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -89,7 +85,7 @@
       <workItem from="1744211049804" duration="492000" />
       <workItem from="1744219913172" duration="2595000" />
       <workItem from="1744285835317" duration="1784000" />
-      <workItem from="1744306008729" duration="4853000" />
+      <workItem from="1744306008729" duration="6937000" />
     </task>
     <task id="LOCAL-00001" summary="init commit">
       <option name="closed" value="true" />
@@ -107,7 +103,15 @@
       <option name="project" value="LOCAL" />
       <updated>1743341068295</updated>
     </task>
-    <option name="localTasksCounter" value="3" />
+    <task id="LOCAL-00003" summary="FEAT | Added moralis and architecture for moralis">
+      <option name="closed" value="true" />
+      <created>1744311917104</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1744311917104</updated>
+    </task>
+    <option name="localTasksCounter" value="4" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -128,6 +132,8 @@
     <MESSAGE value="init commit" />
     <MESSAGE value="Added moralis" />
     <MESSAGE value="Fixed get swaps pagination" />
-    <option name="LAST_COMMIT_MESSAGE" value="Fixed get swaps pagination" />
+    <MESSAGE value="FEAT | Added moralis and architecture for" />
+    <MESSAGE value="FEAT | Added moralis and architecture for moralis" />
+    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added moralis and architecture for moralis" />
   </component>
 </project>

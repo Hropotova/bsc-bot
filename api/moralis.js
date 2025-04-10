@@ -28,6 +28,8 @@ const getWalletTokenSwaps = async (address) => {
 
         return allSwaps;
     } catch (err) {
+        console.log('err', err)
+
         console.error(`Error fetching swaps for ${address}:`, err.message);
         return [];
     }
