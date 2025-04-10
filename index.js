@@ -2,7 +2,7 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const express = require('express');
 
-const {walletParser} = require('./options/walletParser');
+const {walletParser} = require('./services/walletParser');
 
 const app = express();
 const token = process.env.TELEGRAM_TOKEN;

@@ -19,11 +19,8 @@
   "homepage": "https://github.com/Hropotova/bsc-bot#readme",
   "dependencies": {
     "axios": "^1.7.9",
-    "bottleneck": "^2.19.5",
     "dotenv": "^16.4.7",
-    "exceljs": "^4.4.0",
     "express": "^4.21.2",
-    "node-telegram-bot-api": "^0.66.0",
-    "web3": "^1.10.0"
+    "node-telegram-bot-api": "^0.66.0"
   }
 }
