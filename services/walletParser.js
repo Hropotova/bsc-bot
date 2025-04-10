@@ -2,7 +2,6 @@ require('dotenv').config();
 const fs = require('fs');
 
 const {getWalletTokenSwaps, getWalletTokenBalances, getActiveWalletChains} = require('../api/moralis');
-const swapDateFormatter = require('../helpers/swapDateFormatter');
 const {getChainPrice} = require('../api/crypto');
 
 const walletParser = async (addresses, bot, chatId) => {
@@ -46,17 +45,10 @@ const walletParser = async (addresses, bot, chatId) => {
                             wbnbReceived: 0,
                             contractAddress: boughtAddress,
                             balance: 0,
-                            trades: []
                         };
                     }
                     tokenData[token].boughtAmount += parseFloat(bought.amount);
                     tokenData[token].wbnbSpent += Math.abs(parseFloat(sold.amount));
-                    tokenData[token].trades.push({
-                        time: swapDateFormatter(blockTimestamp), // Formatter for date
-                        hash: transactionHash,
-                        action: 'buy',
-                        pair: `WBNB/${token}`
-                    });
                 }
 
                 // Handle SELL transactions (receiving WBNB)
@@ -70,17 +62,10 @@ const walletParser = async (addresses, bot, chatId) => {
                             wbnbReceived: 0,
                             contractAddress: soldAddress,
                             balance: 0,
-                            trades: []
                         };
                     }
                     tokenData[token].soldAmount += Math.abs(parseFloat(sold.amount));
                     tokenData[token].wbnbReceived += parseFloat(bought.amount);
-                    tokenData[token].trades.push({
-                        time: swapDateFormatter(blockTimestamp), // Formatter for date
-                        hash: transactionHash,
-                        action: 'sell',
-                        pair: `${token}/WBNB`
-                    });
                 }
             }
 
@@ -97,10 +82,6 @@ const walletParser = async (addresses, bot, chatId) => {
             const addressData = {};
 
             for (const [symbol, stats] of Object.entries(tokenData)) {
-
-                //  // Sort token trades chronologically from oldest to newest
-                stats.trades.sort((a, b) => new Date(a.time) - new Date(b.time));
-
                 // Calculate PnL for the token: balance + (received - spent)
                 const pnl = stats.balance + (stats.wbnbReceived - stats.wbnbSpent);
 
@@ -113,7 +94,6 @@ const walletParser = async (addresses, bot, chatId) => {
                     pnl: Number(pnl.toFixed(4)),
                     spent: Number(stats.wbnbSpent.toFixed(4)),
                     transfer: 'FALSE',
-                    trades: stats.trades,
                 };
             }
 

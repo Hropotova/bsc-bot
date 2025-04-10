@@ -4,11 +4,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added moralis and architecture for moralis">
-      <change afterPath="$PROJECT_DIR$/helpers/swapDateFormatter.js" afterDir="false" />
+    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added comments and added get token chain price">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/moralis.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/moralis.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/helpers/timeSwapFormater.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/crypto.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/services/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/services/walletParser.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -85,7 +82,7 @@
       <workItem from="1744211049804" duration="492000" />
       <workItem from="1744219913172" duration="2595000" />
       <workItem from="1744285835317" duration="1784000" />
-      <workItem from="1744306008729" duration="6937000" />
+      <workItem from="1744306008729" duration="7736000" />
     </task>
     <task id="LOCAL-00001" summary="init commit">
       <option name="closed" value="true" />
@@ -111,7 +108,15 @@
       <option name="project" value="LOCAL" />
       <updated>1744311917104</updated>
     </task>
-    <option name="localTasksCounter" value="4" />
+    <task id="LOCAL-00004" summary="FEAT | Added comments and added get token chain price">
+      <option name="closed" value="true" />
+      <created>1744314076017</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1744314076017</updated>
+    </task>
+    <option name="localTasksCounter" value="5" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -134,6 +139,7 @@
     <MESSAGE value="Fixed get swaps pagination" />
     <MESSAGE value="FEAT | Added moralis and architecture for" />
     <MESSAGE value="FEAT | Added moralis and architecture for moralis" />
-    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added moralis and architecture for moralis" />
+    <MESSAGE value="FEAT | Added comments and added get token chain price" />
+    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added comments and added get token chain price" />
   </component>
 </project>
