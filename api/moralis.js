@@ -61,9 +61,20 @@ const getActiveWalletChains = async (address, chains = ['eth', 'bsc', 'base']) =
     }
 };
 
+const getTokenPrice = async (tokenAddress, chain = 'eth') => {
+    try {
+        const url = `erc20/${tokenAddress}/price?chain=${chain}&include=percent_change`;
+        const response = await api.get(url);
+        return response.data;
+    } catch (err) {
+        console.error(`Error fetching price for token ${tokenAddress} on ${chain}:`, err.message);
+        return null;
+    }
+};
 
 module.exports = {
     getWalletTokenSwaps,
     getWalletTokenBalances,
-    getActiveWalletChains
+    getActiveWalletChains,
+    getTokenPrice,
 };
