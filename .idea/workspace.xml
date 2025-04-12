@@ -4,10 +4,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added get token price request and added other small changes">
-      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
+    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added small changes for api request">
+      <change afterPath="$PROJECT_DIR$/services/checkTransactionHistory.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/api/moralis.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/moralis.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/api/scan.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/scan.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/index.js" beforeDir="false" afterPath="$PROJECT_DIR$/index.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/options/walletParser.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -84,7 +87,7 @@
       <workItem from="1744219913172" duration="2595000" />
       <workItem from="1744285835317" duration="1784000" />
       <workItem from="1744306008729" duration="14557000" />
-      <workItem from="1744380669099" duration="3832000" />
+      <workItem from="1744380669099" duration="22450000" />
     </task>
     <task id="LOCAL-00001" summary="init commit">
       <option name="closed" value="true" />
@@ -134,7 +137,15 @@
       <option name="project" value="LOCAL" />
       <updated>1744381824576</updated>
     </task>
-    <option name="localTasksCounter" value="7" />
+    <task id="LOCAL-00007" summary="FEAT | Added small changes for api request">
+      <option name="closed" value="true" />
+      <created>1744469375887</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1744469375887</updated>
+    </task>
+    <option name="localTasksCounter" value="8" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -160,6 +171,7 @@
     <MESSAGE value="FEAT | Added comments and added get token chain price" />
     <MESSAGE value="FEAT | Removed trades from JSON" />
     <MESSAGE value="FEAT | Added get token price request and added other small changes" />
-    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added get token price request and added other small changes" />
+    <MESSAGE value="FEAT | Added small changes for api request" />
+    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added small changes for api request" />
   </component>
 </project>

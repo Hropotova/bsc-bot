@@ -3,6 +3,7 @@ const fs = require('fs');
 
 const {getWalletTokenSwaps, getWalletTokenBalances, getActiveWalletChains, getTokenPrice} = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
+const {checkTransactionHistory} = require('../services/checkTransactionHistory');
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
@@ -25,11 +26,16 @@ const walletParser = async (addresses, bot, chatId) => {
             // Get all transactions for the wallet address.
             const transactions = await getAllTransactions(address);
 
-            // Calculate and decode swaps
+            // Get lost swaps and transfers.
+            const {lostSwaps, transfers} = await checkTransactionHistory(address, swaps);
+
             const tokenData = {};
 
-            for (const swap of swaps) {
-                const {bought, sold} = swap;
+            // Compare the swaps with the lost swaps.
+            const allSwaps = [...swaps, ...lostSwaps];
+
+            for (const swap of allSwaps) {
+                const {bought, sold, transactionType} = swap;
                 if (!bought || !sold) continue;
 
                 const boughtSymbol = bought.symbol;
@@ -37,8 +43,8 @@ const walletParser = async (addresses, bot, chatId) => {
                 const boughtAddress = bought.address;
                 const soldAddress = sold.address;
 
-                // Handle BUY transactions (spending WBNB)
-                if (soldSymbol === 'WBNB') {
+                // Handle BUY transactions.
+                if (transactionType === 'buy') {
                     const token = boughtSymbol;
                     if (!tokenData[token]) {
                         tokenData[token] = {
@@ -54,8 +60,8 @@ const walletParser = async (addresses, bot, chatId) => {
                     tokenData[token].spent += Math.abs(parseFloat(sold.amount));
                 }
 
-                // Handle SELL transactions (receiving WBNB)
-                if (boughtSymbol === 'WBNB') {
+                // Handle SELL transactions.
+                if (transactionType === 'sell') {
                     const token = soldSymbol;
                     if (!tokenData[token]) {
                         tokenData[token] = {
@@ -72,7 +78,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 }
             }
 
-            // Convert USD balances to WBNB equivalents
+            // Convert USD balances to WBNB equivalents.
             for (const token of balances) {
                 const symbol = token.symbol;
                 if (tokenData[symbol]) {
@@ -81,9 +87,9 @@ const walletParser = async (addresses, bot, chatId) => {
                 }
             }
 
-            // Add calculated data to JSON
+            // Add calculated data to JSON.
             const addressData = {
-                target_chain: 'bsc', // Add target chain from .env file to the JSON
+                target_chain: 'bsc', // Add target chain from .env file to the JSON.
                 active_chains: chains, // Add active chains to the JSON
                 address_info: {
                     total_transactions: transactions.length,
@@ -91,11 +97,27 @@ const walletParser = async (addresses, bot, chatId) => {
                 },
                 traded_tokens: {},
             };
+
             for (const [symbol, stats] of Object.entries(tokenData)) {
-                // Calculate PnL for the token: balance + (received - spent)
+                // Calculate PnL for the token: balance + (received - spent).
                 const realizedPnl = stats.balance + (stats.received - stats.spent);
 
-                // Add token data to the JSON
+                // Count inflow and outflow transactions.
+                let inflow_count = 0;
+                let outflow_count = 0;
+
+                const tokenTransfers = transfers.filter(i => i.contract === stats.contractAddress);
+
+                tokenTransfers.forEach(transfer => {
+                    if (transfer.from.toLowerCase() === address.toLowerCase()) {
+                        outflow_count++;
+                    }
+                    if (transfer.to.toLowerCase() === address.toLowerCase()) {
+                        inflow_count++;
+                    }
+                });
+
+                // Add token data to the JSON.
                 addressData.traded_tokens[stats.contractAddress] = {
                     symbol,
                     pnl: {
@@ -104,6 +126,10 @@ const walletParser = async (addresses, bot, chatId) => {
                         unrealized: Number(stats.balance.toFixed(4)),
                     },
                     spent: Number(stats.spent.toFixed(4)),
+                    transfers: {
+                        inflow_count,
+                        outflow_count,
+                    },
                 };
             }
 

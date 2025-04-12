@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const getAllTransactions = async (address, page = 1, offset = 10) => {
+const getAllTransactions = async (address) => {
     try {
         const response = await axios.get('https://api.etherscan.io/v2/api', {
             params: {

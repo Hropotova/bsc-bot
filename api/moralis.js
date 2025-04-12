@@ -28,8 +28,6 @@ const getWalletTokenSwaps = async (address) => {
 
         return allSwaps;
     } catch (err) {
-        console.log('err', err)
-
         console.error(`Error fetching swaps for ${address}:`, err.message);
         return [];
     }
@@ -72,9 +70,35 @@ const getTokenPrice = async (token) => {
     }
 };
 
+const getTokenTransactions = async (address, contracts) => {
+    try {
+        const params = contracts.map((addr, i) => `contract_addresses[${i}]=${addr}`).join('&');
+        const url = `${address}/erc20/transfers?chain=bsc&order=DESC&${params}`;
+        const response = await api.get(url);
+
+        return response.data.result;
+    } catch (err) {
+        console.error(`Error fetching ERC20 transfers for ${address}:`, err.message);
+        return [];
+    }
+};
+
+const decodeTransaction = async (txHash) => {
+    const url = `transaction/${txHash}?chain=bsc`;
+    try {
+        const response = await api.get(url);
+        return response.data;
+    } catch (err) {
+        console.error(`Failed to decode ${txHash}:`, err.message);
+        return null;
+    }
+};
+
 module.exports = {
     getWalletTokenSwaps,
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
+    getTokenTransactions,
+    decodeTransaction,
 };
