@@ -4,12 +4,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="">
+    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added get token price request and added other small changes">
+      <change beforePath="$PROJECT_DIR$/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/.gitignore" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/crypto.js" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/api/moralis.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/moralis.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/api/scan.js" beforeDir="false" afterPath="$PROJECT_DIR$/api/scan.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/services/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/services/walletParser.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -86,7 +84,7 @@
       <workItem from="1744219913172" duration="2595000" />
       <workItem from="1744285835317" duration="1784000" />
       <workItem from="1744306008729" duration="14557000" />
-      <workItem from="1744380669099" duration="1082000" />
+      <workItem from="1744380669099" duration="3832000" />
     </task>
     <task id="LOCAL-00001" summary="init commit">
       <option name="closed" value="true" />
@@ -128,7 +126,15 @@
       <option name="project" value="LOCAL" />
       <updated>1744315760344</updated>
     </task>
-    <option name="localTasksCounter" value="6" />
+    <task id="LOCAL-00006" summary="FEAT | Added get token price request and added other small changes">
+      <option name="closed" value="true" />
+      <created>1744381824576</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1744381824576</updated>
+    </task>
+    <option name="localTasksCounter" value="7" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -153,6 +159,7 @@
     <MESSAGE value="FEAT | Added moralis and architecture for moralis" />
     <MESSAGE value="FEAT | Added comments and added get token chain price" />
     <MESSAGE value="FEAT | Removed trades from JSON" />
-    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Removed trades from JSON" />
+    <MESSAGE value="FEAT | Added get token price request and added other small changes" />
+    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added get token price request and added other small changes" />
   </component>
 </project>

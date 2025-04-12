@@ -61,13 +61,13 @@ const getActiveWalletChains = async (address, chains = ['eth', 'bsc', 'base']) =
     }
 };
 
-const getTokenPrice = async (tokenAddress, chain = 'eth') => {
+const getTokenPrice = async (token) => {
     try {
-        const url = `erc20/${tokenAddress}/price?chain=${chain}&include=percent_change`;
+        const url = `erc20/${token}/price?chain=bsc`;
         const response = await api.get(url);
         return response.data;
     } catch (err) {
-        console.error(`Error fetching price for token ${tokenAddress} on ${chain}:`, err.message);
+        console.error(`Error fetching price for token ${token} bsc:`, err.message);
         return null;
     }
 };
