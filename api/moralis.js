@@ -33,11 +33,35 @@ const getWalletTokenSwaps = async (address) => {
     }
 };
 
+const getWalletHistory = async (address) => {
+    try {
+        let cursor = null;
+        let allTransactions = [];
+
+        while (true) {
+            const url = `wallets/${address}/history?chain=bsc&order=DESC${cursor ? `&cursor=${cursor}` : ''}`;
+            const response = await api.get(url);
+            const data = response.data;
+            const transactions = data.result || [];
+
+            allTransactions.push(...transactions);
+
+            if (!data.cursor || transactions.length < 100) break;
+            cursor = data.cursor;
+        }
+
+        return allTransactions;
+    } catch (err) {
+        console.error(`Error fetching swaps for ${address}:`, err.message);
+        return [];
+    }
+};
 
 const getWalletTokenBalances = async (address) => {
     try {
         const url = `wallets/${address}/tokens?chain=bsc`;
         const response = await api.get(url);
+
         return response.data.result || [];
     } catch (err) {
         console.error(`Error fetching balance for ${address}:`, err.message);
@@ -70,19 +94,6 @@ const getTokenPrice = async (token) => {
     }
 };
 
-const getTokenTransactions = async (address, contracts) => {
-    try {
-        const params = contracts.map((addr, i) => `contract_addresses[${i}]=${addr}`).join('&');
-        const url = `${address}/erc20/transfers?chain=bsc&order=DESC&${params}`;
-        const response = await api.get(url);
-
-        return response.data.result;
-    } catch (err) {
-        console.error(`Error fetching ERC20 transfers for ${address}:`, err.message);
-        return [];
-    }
-};
-
 const decodeTransaction = async (txHash) => {
     const url = `transaction/${txHash}?chain=bsc`;
     try {
@@ -95,10 +106,10 @@ const decodeTransaction = async (txHash) => {
 };
 
 module.exports = {
+    getWalletHistory,
     getWalletTokenSwaps,
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
-    getTokenTransactions,
     decodeTransaction,
 };

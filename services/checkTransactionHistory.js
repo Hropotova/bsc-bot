@@ -1,4 +1,4 @@
-const {getTokenTransactions, decodeTransaction} = require('../api/moralis');
+const {decodeTransaction, getWalletHistory} = require('../api/moralis');
 
 const checkTransactionHistory = async (address, swaps) => {
     const swapsByContract = {};
@@ -13,27 +13,27 @@ const checkTransactionHistory = async (address, swaps) => {
 
     const contractAddresses = Object.keys(swapsByContract);
 
-    const additionalTransfers = await getTokenTransactions(address, contractAddresses);
+    // Get the full transaction history of a specified wallet address.
+    const transactions = await getWalletHistory(address);
 
+    // Filter spam token and transactions
+    const ercTransfers = transactions.filter(i => i.from_address.toLowerCase() === address.toLowerCase() && i.erc20_transfers.length !== 0);
+
+    // Check missing transactions
     const swapHashes = new Set(swaps.map((s) => s.transactionHash.toLowerCase()));
-    const missingTransfers = additionalTransfers.filter(
-        (tx) => !swapHashes.has(tx.transaction_hash.toLowerCase())
+    const missingTransfers = ercTransfers.filter(
+        (tx) => !swapHashes.has(tx.hash.toLowerCase())
     );
 
     const swapsArray = [];
     const transfersArray = [];
 
     for (const [i, tx] of missingTransfers.entries()) {
-        const decorated = await decodeTransaction(tx.transaction_hash);
-        if (decorated) {
-            const isSwap = decorated.logs.some(
-                (log) =>
-                    log.topic0 ===
-                    '0x7db52723a3b2cdd6164364b3b766e65e540d7be48ffa89582956d8eaebe62942' ||
-                    decorated.input.startsWith('0x7fc97d9b')
-            );
 
-            if (isSwap) {
+        const decorated = await decodeTransaction(tx.hash);
+        if (decorated) {
+
+            if (tx.category === 'token swap') {
                 const transfers = decorated.logs.filter(
                     (log) =>
                         log.topic0 ===
@@ -73,8 +73,9 @@ const checkTransactionHistory = async (address, swaps) => {
                 if (bnbSpent && received) {
                     transactionType = 'buy';
                     bought = {
-                        symbol: tx.token_symbol,
+                        symbol: tx.erc20_transfers[0].token_symbol,
                         amount: tokenNameReceived,
+                        address: tx.erc20_transfers[0].address,
                     }
                     sold = {
                         symbol: 'WBNB',
@@ -88,14 +89,15 @@ const checkTransactionHistory = async (address, swaps) => {
                         amount: bnbSpent,
                     }
                     sold = {
-                        symbol: tx.token_symbol,
+                        symbol: tx.erc20_transfers[0].token_symbol,
                         amount: tokenNameSent,
+                        address: tx.erc20_transfers[0].address,
                     }
                 }
 
                 const swapObject = {
                     transactionType,
-                    transactionHash: tx.transaction_hash,
+                    transactionHash: tx.hash,
                     from: decorated.from_address,
                     to: decorated.to_address,
                     bought,
@@ -104,10 +106,10 @@ const checkTransactionHistory = async (address, swaps) => {
                 swapsArray.push(swapObject);
             } else {
                 const transferObject = {
-                    transactionHash: tx.transaction_hash,
-                    tokenSymbol: tx.token_symbol,
+                    transactionHash: tx.hash,
+                    tokenSymbol: tx.erc20_transfers[0].token_symbol,
                     value: tx.value,
-                    contract: tx.address,
+                    contract: tx.erc20_transfers[0].address,
                     from: decorated.from_address,
                     to: decorated.to_address
                 };
