@@ -3,8 +3,8 @@ require('dotenv').config();
 const fs = require('fs');
 
 const {getWalletTokenSwaps, getWalletTokenBalances, getActiveWalletChains, getTokenPrice} = require('../api/moralis');
-const {getAllTransactions} = require('../api/scan');
-const {checkTransactionHistory} = require('../services/checkTransactionHistory');
+const {getAllTransactions} = require('./api/scan');
+const {checkTransactionHistory} = require('./services/checkTransactionHistory');
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
