@@ -173,13 +173,24 @@ const walletParser = async (addresses, bot, chatId) => {
                             inflow_count++;
                         }
                     });
-                    console.log('stats.trades', stats.trades)
+
                     const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                     const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
+
+                    let winRate;
+
+                    if (realizedPnl.toFixed(2) > 0.3) {
+                        winRate = true;
+                    } else if (realizedPnl.toFixed(2) < -0.3) {
+                        winRate = false;
+                    } else {
+                        winRate = null;
+                    }
 
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
+                        win_rate: winRate,
                         avg_holding_hours: computeAvgHoldingHours(stats.trades),
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
