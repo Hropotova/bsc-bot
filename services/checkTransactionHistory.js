@@ -1,6 +1,6 @@
-const {decodeTransaction, getWalletHistory} = require('../api/moralis');
+const {decodeTransaction} = require('../api/moralis');
 
-const checkTransactionHistory = async (address, swaps) => {
+const checkTransactionHistory = async (address, swaps, transactions) => {
     const swapsByContract = {};
     for (const swap of swaps) {
         const tokenAddress = swap?.baseToken;
@@ -12,9 +12,6 @@ const checkTransactionHistory = async (address, swaps) => {
     }
 
     const contractAddresses = Object.keys(swapsByContract);
-
-    // Get the full transaction history of a specified wallet address.
-    const transactions = await getWalletHistory(address);
 
     // Filter spam token and transactions
     const ercTransfers = transactions.filter(i => i.from_address.toLowerCase() === address.toLowerCase() && i.erc20_transfers.length !== 0);

@@ -1,9 +1,16 @@
 require('dotenv').config();
 const fs = require('fs');
 
-const {getWalletTokenSwaps, getWalletTokenBalances, getActiveWalletChains, getTokenPrice} = require('../api/moralis');
+const {
+    getWalletTokenSwaps,
+    getWalletTokenBalances,
+    getActiveWalletChains,
+    getTokenPrice,
+    getWalletHistory
+} = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
 const {checkTransactionHistory} = require('../services/checkTransactionHistory');
+const {transactionsFrequency} = require("../services/transactionsFrequency");
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
@@ -22,6 +29,9 @@ const walletParser = async (addresses, bot, chatId) => {
                 // Get all swap related transactions (buy, sell).
                 const swaps = await getWalletTokenSwaps(address);
 
+                // Get the full transaction history of a specified wallet address.
+                const transactions = await getWalletHistory(address);
+
                 // Get token balances for a specific wallet address.
                 const balances = await getWalletTokenBalances(address);
 
@@ -29,7 +39,8 @@ const walletParser = async (addresses, bot, chatId) => {
                 const chains = await getActiveWalletChains(address);
 
                 // Get lost swaps and transfers.
-                const {lostSwaps, transfers} = await checkTransactionHistory(address, swaps);
+                const {lostSwaps, transfers} = await checkTransactionHistory(address, swaps, transactions);
+                const transactionFrequency = await transactionsFrequency(address, transactions);
 
                 const tokenData = {};
 
@@ -57,10 +68,12 @@ const walletParser = async (addresses, bot, chatId) => {
                                 contractAddress: boughtAddress,
                                 symbol: boughtSymbol,
                                 balance: 0,
+                                trades: []
                             };
                         }
                         tokenData[token].boughtAmount += parseFloat(bought.amount);
                         tokenData[token].spent += Math.abs(parseFloat(sold.amount));
+                        tokenData[token].trades.push(swap);
                     }
 
                     // Handle SELL transactions.
@@ -75,10 +88,12 @@ const walletParser = async (addresses, bot, chatId) => {
                                 contractAddress: soldAddress,
                                 symbol: soldSymbol,
                                 balance: 0,
+                                trades: [],
                             };
                         }
                         tokenData[token].soldAmount += Math.abs(parseFloat(sold.amount));
                         tokenData[token].received += parseFloat(bought.amount);
+                        tokenData[token].trades.push(swap);
                     }
                 }
 
@@ -88,29 +103,34 @@ const walletParser = async (addresses, bot, chatId) => {
                     const contractAddress = token.token_address;
                     if (tokenData[contractAddress]) {
                         const usdValue = token.usd_value || 0;
-                        tokenData[contractAddress].balance = usdValue / bnbPrice.usdPrice.toFixed(4);
+                        tokenData[contractAddress].balance = usdValue / bnbPrice.usdPrice.toFixed(2);
                     }
                 }
 
                 // Add calculated data to JSON.
                 const addressData = {
-                    target_chain: 'bsc', // Add target chain from .env file to the JSON.
-                    active_chains: chains, // Add active chains to the JSON
+                    target_chain: 'bsc',
+                    active_chains: chains,
+                    average_pnl: '',
                     address_info: {
                         total_transactions: transactions.length,
                         total_tokens_traded: Object.entries(tokenData).length,
+                        transaction_frequency: transactionFrequency,
                     },
                     traded_tokens: {},
                 };
 
+                let sumRealizedPnls = 0;
+                let tokenCount = 0;
+
                 for (const [contract, stats] of Object.entries(tokenData)) {
-                    // Calculate PnL for the token: balance + (received - spent).
                     const realizedPnl = stats.balance + (stats.received - stats.spent);
 
-                    // Count inflow and outflow transactions.
+                    sumRealizedPnls += realizedPnl;
+                    tokenCount++;
+
                     let inflow_count = 0;
                     let outflow_count = 0;
-
                     const tokenTransfers = transfers.filter(i => i.contract === contract);
 
                     tokenTransfers.forEach(transfer => {
@@ -122,23 +142,33 @@ const walletParser = async (addresses, bot, chatId) => {
                         }
                     });
 
-                    // Add token data to the JSON.
+                    const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
+                    const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
+
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
-                        spent: Number(stats.spent.toFixed(4)),
+                        spent: Number(stats.spent.toFixed(2)),
                         pnl: {
-                            total: Number(realizedPnl.toFixed(4)),
-                            realized: Number(stats.received.toFixed(4)),
-                            unrealized: Number(stats.balance.toFixed(4)),
+                            total: Number(realizedPnl.toFixed(2)),
+                            realized: Number(stats.received.toFixed(2)),
+                            unrealized: Number(stats.balance.toFixed(2)),
                         },
                         transfers: {
                             inflow_count,
                             outflow_count,
                         },
+                        trades: {
+                            buy_count: buyCount,
+                            sell_count: sellCount,
+                        },
                     };
                 }
 
-                const filePath = `${address}.json`;
+                const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
+
+                addressData.average_pnl = Number(overallAverage.toFixed(2));
+
+                const filePath = `${Number(overallAverage.toFixed(2))}bsc - ${address}.json`;
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
                 const options = {
