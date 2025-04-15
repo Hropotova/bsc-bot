@@ -70,6 +70,7 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
                 if (bnbSpent && received) {
                     transactionType = 'buy';
                     bought = {
+                        blockTimestamp: tx.block_timestamp,
                         symbol: tx.erc20_transfers[0].token_symbol,
                         amount: tokenNameReceived,
                         address: tx.erc20_transfers[0].address,
@@ -89,6 +90,7 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
                         symbol: tx.erc20_transfers[0].token_symbol,
                         amount: tokenNameSent,
                         address: tx.erc20_transfers[0].address,
+                        blockTimestamp: tx.block_timestamp,
                     }
                 }
 

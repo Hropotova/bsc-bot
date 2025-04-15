@@ -123,6 +123,38 @@ const walletParser = async (addresses, bot, chatId) => {
                 let sumRealizedPnls = 0;
                 let tokenCount = 0;
 
+                function computeAvgHoldingHours(trades) {
+                    // Сортуємо транзакції за blockTimestamp від старшого до новішого.
+                    trades.sort((a, b) => new Date(a.blockTimestamp) - new Date(b.blockTimestamp));
+
+                    const buyQueue = [];
+                    const holdingPeriods = [];
+
+                    trades.forEach(trade => {
+                        if (trade.transactionType === 'buy') {
+                            // Додаємо час покупки до черги.
+                            buyQueue.push(new Date(trade.blockTimestamp));
+                        } else if (trade.transactionType === 'sell' && buyQueue.length > 0) {
+                            // Витягуємо найстаршу покупку та обчислюємо різницю часу до продажу.
+                            const buyTime = buyQueue.shift();
+                            const sellTime = new Date(trade.blockTimestamp);
+                            const diffMs = sellTime - buyTime; // різниця в мілісекундах
+                            const diffHours = diffMs / (1000 * 3600);
+                            holdingPeriods.push(diffHours);
+                        }
+                    });
+
+                    if (holdingPeriods.length === 0) {
+                        return 0;
+                    }
+
+                    const totalHoldingHours = holdingPeriods.reduce((sum, hours) => sum + hours, 0);
+                    const avgHoldingHours = totalHoldingHours / holdingPeriods.length;
+
+                    return avgHoldingHours;
+                }
+
+
                 for (const [contract, stats] of Object.entries(tokenData)) {
                     const realizedPnl = stats.balance + (stats.received - stats.spent);
 
@@ -141,13 +173,14 @@ const walletParser = async (addresses, bot, chatId) => {
                             inflow_count++;
                         }
                     });
-
+                    console.log('stats.trades', stats.trades)
                     const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                     const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
+                        avg_holding_hours: computeAvgHoldingHours(stats.trades),
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
                             realized: Number(stats.received.toFixed(2)),
