@@ -112,6 +112,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 const addressData = {
                     chain_id: 'bsc',
                     active_chains: chains,
+                    win_rate: '',
                     average_pnl: '',
                     address_info: {
                         total_transactions: transactions.length,
@@ -123,6 +124,9 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 let sumRealizedPnls = 0;
                 let tokenCount = 0;
+
+                let winCount = 0;
+                let totalEvaluatedTokens = 0;
 
                 for (const [contract, stats] of Object.entries(tokenData)) {
                     let inflowCount = 0;
@@ -148,10 +152,17 @@ const walletParser = async (addresses, bot, chatId) => {
                         }
                     });
 
-                    if (realizedPnl.toFixed(2) > 0.3) {
+                    if (Number(realizedPnl.toFixed(2)) > 0.3) {
                         winRate = true;
-                    } else if (realizedPnl.toFixed(2) < -0.3) {
+                    } else if (Number(realizedPnl.toFixed(2)) < -0.3) {
                         winRate = false;
+                    }
+
+                    if (winRate !== null) {
+                        totalEvaluatedTokens++;
+                        if (winRate === true) {
+                            winCount++;
+                        }
                     }
 
                     const avgHoldingHours = averageHoldingHours(stats.trades);
@@ -159,7 +170,6 @@ const walletParser = async (addresses, bot, chatId) => {
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
-                        win_rate: winRate,
                         avg_holding_hours: avgHoldingHours,
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
@@ -180,8 +190,9 @@ const walletParser = async (addresses, bot, chatId) => {
                 const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
 
                 addressData.average_pnl = Number(overallAverage.toFixed(2));
+                addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(2)) : 0}%`;
 
-                const filePath = `${Number(overallAverage.toFixed(2))}bsc - ${address}.json`;
+                const filePath = `${addressData.win_rate}% ${addressData.average_pnl}bnb - ${address}.json`;
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
                 const options = {
