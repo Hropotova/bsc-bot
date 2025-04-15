@@ -4,9 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added avarage holding hours">
+    <list default="true" id="49325684-85c5-469f-b005-48979f251e7e" name="Changes" comment="FEAT | Added win rate">
+      <change afterPath="$PROJECT_DIR$/services/averageHoldingHours.js" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/options/walletParser.js" beforeDir="false" afterPath="$PROJECT_DIR$/options/walletParser.js" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/services/transactionsFrequency.js" beforeDir="false" afterPath="$PROJECT_DIR$/services/transactionsFrequency.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -87,7 +89,7 @@
       <workItem from="1744550471906" duration="8133000" />
       <workItem from="1744640935180" duration="6572000" />
       <workItem from="1744662009481" duration="4337000" />
-      <workItem from="1744710507497" duration="12266000" />
+      <workItem from="1744710507497" duration="13412000" />
     </task>
     <task id="LOCAL-00001" summary="init commit">
       <option name="closed" value="true" />
@@ -201,7 +203,15 @@
       <option name="project" value="LOCAL" />
       <updated>1744743273179</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="FEAT | Added win rate">
+      <option name="closed" value="true" />
+      <created>1744751975900</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1744751975900</updated>
+    </task>
+    <option name="localTasksCounter" value="16" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -232,6 +242,7 @@
     <MESSAGE value="FIX | Fixed pnl calculate and add comments for code" />
     <MESSAGE value="FEAT | Added transaction frequency, trades and average pnl" />
     <MESSAGE value="FEAT | Added avarage holding hours" />
-    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added avarage holding hours" />
+    <MESSAGE value="FEAT | Added win rate" />
+    <option name="LAST_COMMIT_MESSAGE" value="FEAT | Added win rate" />
   </component>
 </project>

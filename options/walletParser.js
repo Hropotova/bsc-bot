@@ -10,7 +10,8 @@ const {
 } = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
 const {checkTransactionHistory} = require('../services/checkTransactionHistory');
-const {transactionsFrequency} = require("../services/transactionsFrequency");
+const {transactionsFrequency} = require('../services/transactionsFrequency');
+const {averageHoldingHours} = require('../services/averageHoldingHours');
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
@@ -40,7 +41,7 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 // Get lost swaps and transfers.
                 const {lostSwaps, transfers} = await checkTransactionHistory(address, swaps, transactions);
-                const transactionFrequency = await transactionsFrequency(address, transactions);
+                const transactionFrequency = transactionsFrequency(address, transactions);
 
                 const tokenData = {};
 
@@ -109,7 +110,7 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 // Add calculated data to JSON.
                 const addressData = {
-                    target_chain: 'bsc',
+                    chain_id: 'bsc',
                     active_chains: chains,
                     average_pnl: '',
                     address_info: {
@@ -123,83 +124,51 @@ const walletParser = async (addresses, bot, chatId) => {
                 let sumRealizedPnls = 0;
                 let tokenCount = 0;
 
-                function computeAvgHoldingHours(trades) {
-                    // Сортуємо транзакції за blockTimestamp від старшого до новішого.
-                    trades.sort((a, b) => new Date(a.blockTimestamp) - new Date(b.blockTimestamp));
-
-                    const buyQueue = [];
-                    const holdingPeriods = [];
-
-                    trades.forEach(trade => {
-                        if (trade.transactionType === 'buy') {
-                            // Додаємо час покупки до черги.
-                            buyQueue.push(new Date(trade.blockTimestamp));
-                        } else if (trade.transactionType === 'sell' && buyQueue.length > 0) {
-                            // Витягуємо найстаршу покупку та обчислюємо різницю часу до продажу.
-                            const buyTime = buyQueue.shift();
-                            const sellTime = new Date(trade.blockTimestamp);
-                            const diffMs = sellTime - buyTime; // різниця в мілісекундах
-                            const diffHours = diffMs / (1000 * 3600);
-                            holdingPeriods.push(diffHours);
-                        }
-                    });
-
-                    if (holdingPeriods.length === 0) {
-                        return 0;
-                    }
-
-                    const totalHoldingHours = holdingPeriods.reduce((sum, hours) => sum + hours, 0);
-                    const avgHoldingHours = totalHoldingHours / holdingPeriods.length;
-
-                    return avgHoldingHours;
-                }
-
-
                 for (const [contract, stats] of Object.entries(tokenData)) {
+                    let inflowCount = 0;
+                    let outflowCount = 0;
+                    let winRate = null;
+
                     const realizedPnl = stats.balance + (stats.received - stats.spent);
 
-                    sumRealizedPnls += realizedPnl;
-                    tokenCount++;
-
-                    let inflow_count = 0;
-                    let outflow_count = 0;
                     const tokenTransfers = transfers.filter(i => i.contract === contract);
-
-                    tokenTransfers.forEach(transfer => {
-                        if (transfer.from.toLowerCase() === address.toLowerCase()) {
-                            outflow_count++;
-                        }
-                        if (transfer.to.toLowerCase() === address.toLowerCase()) {
-                            inflow_count++;
-                        }
-                    });
 
                     const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                     const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
-                    let winRate;
+                    sumRealizedPnls += realizedPnl;
+                    tokenCount++;
+
+                    tokenTransfers.forEach(transfer => {
+                        if (transfer.from.toLowerCase() === address.toLowerCase()) {
+                            outflowCount++;
+                        }
+                        if (transfer.to.toLowerCase() === address.toLowerCase()) {
+                            inflowCount++;
+                        }
+                    });
 
                     if (realizedPnl.toFixed(2) > 0.3) {
                         winRate = true;
                     } else if (realizedPnl.toFixed(2) < -0.3) {
                         winRate = false;
-                    } else {
-                        winRate = null;
                     }
+
+                    const avgHoldingHours = averageHoldingHours(stats.trades);
 
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
                         win_rate: winRate,
-                        avg_holding_hours: computeAvgHoldingHours(stats.trades),
+                        avg_holding_hours: avgHoldingHours,
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
                             realized: Number(stats.received.toFixed(2)),
                             unrealized: Number(stats.balance.toFixed(2)),
                         },
                         transfers: {
-                            inflow_count,
-                            outflow_count,
+                            inflow_count: inflowCount,
+                            outflow_count: outflowCount,
                         },
                         trades: {
                             buy_count: buyCount,
