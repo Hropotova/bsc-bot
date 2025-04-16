@@ -12,6 +12,7 @@ const {getAllTransactions} = require('../api/scan');
 const {checkTransactionHistory} = require('../services/checkTransactionHistory');
 const {transactionsFrequency} = require('../services/transactionsFrequency');
 const {averageHoldingHours} = require('../services/averageHoldingHours');
+const {contracts} = require('../constants/contracts');
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
@@ -192,7 +193,16 @@ const walletParser = async (addresses, bot, chatId) => {
                 addressData.average_pnl = Number(overallAverage.toFixed(2));
                 addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(2)) : 0}%`;
 
-                const filePath = `${addressData.win_rate}% ${addressData.average_pnl}bnb - ${address}.json`;
+                const tradedTokens = addressData.traded_tokens;
+
+                for (const token of contracts) {
+                    const lowerToken = token.toLowerCase();
+                    if (tradedTokens[lowerToken]) {
+                        delete tradedTokens[lowerToken];
+                    }
+                }
+
+                const filePath = `${addressData.win_rate} ${addressData.average_pnl}bnb - ${address}.json`;
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
                 const options = {
