@@ -16,7 +16,10 @@ const contracts = [
     "0xf6718b2701d4a6498ef77d7c152b2137ab28b8a3",
     "0x38a001e57430f781404fff7a81de4bd67d1f6117",
     "0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3",
-    "0x917af46b3c3c6e1bb7286b9f59637fb7c65851fb"
+    "0x917af46b3c3c6e1bb7286b9f59637fb7c65851fb",
+    "0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c",
+    "0x3ee2200efb3400fabb9aacf31297cbdd1d435d47",
+    "0xcc42724c6683b7e57334c4e856f4c9965ed682bd",
 ]
 
 module.exports = {contracts};
