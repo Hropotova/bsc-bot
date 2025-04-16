@@ -171,12 +171,12 @@ const walletParser = async (addresses, bot, chatId) => {
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
-                        avg_holding_hours: avgHoldingHours,
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
                             realized: Number(stats.received.toFixed(2)),
                             unrealized: Number(stats.balance.toFixed(2)),
                         },
+                        avg_holding_hours: avgHoldingHours,
                         transfers: {
                             inflow_count: inflowCount,
                             outflow_count: outflowCount,
