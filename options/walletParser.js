@@ -109,6 +109,14 @@ const walletParser = async (addresses, bot, chatId) => {
                     }
                 }
 
+                // Filter traded tokens.
+                for (const token of contracts) {
+                    const lowerToken = token.toLowerCase();
+                    if (tokenData[lowerToken]) {
+                        delete tokenData[lowerToken];
+                    }
+                }
+
                 // Add calculated data to JSON.
                 const addressData = {
                     chain_id: 'bsc',
@@ -191,16 +199,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
 
                 addressData.average_pnl = Number(overallAverage.toFixed(2));
-                addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(2)) : 0}%`;
-
-                const tradedTokens = addressData.traded_tokens;
-
-                for (const token of contracts) {
-                    const lowerToken = token.toLowerCase();
-                    if (tradedTokens[lowerToken]) {
-                        delete tradedTokens[lowerToken];
-                    }
-                }
+                addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(0)) : 0}%`;
 
                 const filePath = `${addressData.win_rate} ${addressData.average_pnl}bnb - ${address}.json`;
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));

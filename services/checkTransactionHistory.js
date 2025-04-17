@@ -25,6 +25,8 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
     const swapsArray = [];
     const transfersArray = [];
 
+    console.log('missingTransfers', missingTransfers)
+
     for (const [i, tx] of missingTransfers.entries()) {
 
         const decorated = await decodeTransaction(tx.hash);
