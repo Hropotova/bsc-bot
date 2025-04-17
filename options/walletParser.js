@@ -234,8 +234,8 @@ const walletParser = async (addresses, bot, chatId) => {
                 await bot.sendMessage(chatId, 'Choose an option:', menuOptions);
             }
         } catch (error) {
-            console.error(`Error parsing wallet ${address}:`, error.message);
-            await bot.sendMessage(chatId, `Error parsing wallet \`${address}\`: ${error.message}`, {parse_mode: 'Markdown'});
+            console.error(`Error parsing wallet ${address}:`, error);
+            await bot.sendMessage(chatId, `Error parsing wallet \`${address}\`: ${error}`, {parse_mode: 'Markdown'});
         }
 
     }

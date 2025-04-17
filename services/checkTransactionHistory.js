@@ -39,8 +39,6 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
         )
     );
 
-    console.log('mismatchedContracts', mismatchedContracts)
-
     for (const [i, tx] of missingTransfers.entries()) {
 
         const decorated = await decodeTransaction(tx.hash);
