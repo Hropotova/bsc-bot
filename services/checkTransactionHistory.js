@@ -25,7 +25,21 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
     const swapsArray = [];
     const transfersArray = [];
 
-    console.log('missingTransfers', missingTransfers)
+    const mismatchedTransfers = transactions.filter(
+        tx =>
+            tx.from_address.toLowerCase() !== address.toLowerCase() &&
+            tx.erc20_transfers.length > 0
+    );
+
+    const mismatchedContracts = Array.from(
+        new Set(
+            mismatchedTransfers.map(
+                tx => tx.erc20_transfers[0].address.toLowerCase()
+            )
+        )
+    );
+
+    console.log('mismatchedContracts', mismatchedContracts)
 
     for (const [i, tx] of missingTransfers.entries()) {
 
@@ -119,7 +133,7 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
         }
     }
 
-    return {lostSwaps: swapsArray, transfers: transfersArray};
+    return {lostSwaps: swapsArray, transfers: transfersArray, mismatchedContracts};
 }
 
 module.exports = {checkTransactionHistory};

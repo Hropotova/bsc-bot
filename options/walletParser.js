@@ -41,7 +41,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 const chains = await getActiveWalletChains(address);
 
                 // Get lost swaps and transfers.
-                const {lostSwaps, transfers} = await checkTransactionHistory(address, swaps, transactions);
+                const {lostSwaps, transfers, mismatchedContracts} = await checkTransactionHistory(address, swaps, transactions);
                 const transactionFrequency = transactionsFrequency(address, transactions);
 
                 const tokenData = {};
@@ -110,7 +110,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 }
 
                 // Filter traded tokens.
-                for (const token of contracts) {
+                for (const token of [...contracts, ...mismatchedContracts]) {
                     const lowerToken = token.toLowerCase();
                     if (tokenData[lowerToken]) {
                         delete tokenData[lowerToken];
