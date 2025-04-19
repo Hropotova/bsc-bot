@@ -94,7 +94,7 @@ const getTokenPrice = async (token) => {
     }
 };
 
-const decodeTransaction = async (txHash) => {
+const getTransaction = async (txHash) => {
     const url = `transaction/${txHash}?chain=bsc`;
     try {
         const response = await api.get(url);
@@ -111,5 +111,5 @@ module.exports = {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
-    decodeTransaction,
+    getTransaction,
 };

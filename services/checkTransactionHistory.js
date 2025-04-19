@@ -1,4 +1,4 @@
-const {decodeTransaction} = require('../api/moralis');
+const {getTransaction} = require('../api/moralis');
 
 const checkTransactionHistory = async (address, swaps, transactions) => {
     const swapsByContract = {};
@@ -41,7 +41,7 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
 
     for (const [i, tx] of missingTransfers.entries()) {
 
-        const decorated = await decodeTransaction(tx.hash);
+        const decorated = await getTransaction(tx.hash);
         if (decorated) {
 
             if (tx.category === 'token swap') {

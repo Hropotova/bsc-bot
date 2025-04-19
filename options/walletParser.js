@@ -121,9 +121,9 @@ const walletParser = async (addresses, bot, chatId) => {
                 const addressData = {
                     chain_id: 'bsc',
                     active_chains: chains,
+                    roi_pct: '',
                     win_rate: '',
                     average_pnl: '',
-                    roi_pct: '',
                     address_info: {
                         total_transactions: transactions.length,
                         total_tokens_traded: Object.entries(tokenData).length,
@@ -193,6 +193,7 @@ const walletParser = async (addresses, bot, chatId) => {
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
+                        roi_pct_token: roiPctToken,
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
                             realized: Number(stats.received.toFixed(2)),
@@ -207,7 +208,6 @@ const walletParser = async (addresses, bot, chatId) => {
                             buy_count: buyCount,
                             sell_count: sellCount,
                         },
-                        roi_pct_token: roiPctToken,
                     };
                 }
 
@@ -215,7 +215,7 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 addressData.average_pnl = Number(overallAverage.toFixed(2));
                 addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(0)) : 0}%`;
-                addressData.roi_pct = sumSpentForROI > 0 ? Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(2)) : null;
+                addressData.roi_pct = `${sumSpentForROI > 0 ? Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0)) : null}%`;
 
                 const filePath = `${addressData.win_rate} ${addressData.average_pnl}bnb - ${address}.json`;
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
