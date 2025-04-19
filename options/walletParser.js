@@ -123,6 +123,7 @@ const walletParser = async (addresses, bot, chatId) => {
                     active_chains: chains,
                     win_rate: '',
                     average_pnl: '',
+                    roi_pct: '',
                     address_info: {
                         total_transactions: transactions.length,
                         total_tokens_traded: Object.entries(tokenData).length,
@@ -136,6 +137,9 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 let winCount = 0;
                 let totalEvaluatedTokens = 0;
+
+                let sumSpentForROI = 0;
+                let sumPnLForROI   = 0;
 
                 for (const [contract, stats] of Object.entries(tokenData)) {
                     let inflowCount = 0;
@@ -151,6 +155,16 @@ const walletParser = async (addresses, bot, chatId) => {
 
                     sumRealizedPnls += realizedPnl;
                     tokenCount++;
+
+                    const roiPctToken = stats.spent > 0
+                        ? Number(((realizedPnl / stats.spent) * 100).toFixed(2))
+                        : null;
+
+                    if (stats.spent > 0) {
+                        sumSpentForROI += stats.spent;
+                        sumPnLForROI   += realizedPnl;
+                    }
+
 
                     tokenTransfers.forEach(transfer => {
                         if (transfer.from.toLowerCase() === address.toLowerCase()) {
@@ -193,6 +207,7 @@ const walletParser = async (addresses, bot, chatId) => {
                             buy_count: buyCount,
                             sell_count: sellCount,
                         },
+                        roi_pct_token: roiPctToken,
                     };
                 }
 
@@ -200,6 +215,7 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 addressData.average_pnl = Number(overallAverage.toFixed(2));
                 addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(0)) : 0}%`;
+                addressData.roi_pct = sumSpentForROI > 0 ? Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(2)) : null;
 
                 const filePath = `${addressData.win_rate} ${addressData.average_pnl}bnb - ${address}.json`;
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
