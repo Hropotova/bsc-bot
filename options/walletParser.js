@@ -32,7 +32,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 const swaps = await getWalletTokenSwaps(address);
 
                 // Get the full transaction history of a specified wallet address.
-                const transactions = await getWalletHistory(address);
+                const transactionsHistory = await getWalletHistory(address);
 
                 // Get token balances for a specific wallet address.
                 const balances = await getWalletTokenBalances(address);
@@ -41,13 +41,12 @@ const walletParser = async (addresses, bot, chatId) => {
                 const chains = await getActiveWalletChains(address);
 
                 // Get lost swaps and transfers.
-                const {lostSwaps, transfers, mismatchedContracts} = await checkTransactionHistory(address, swaps, transactions);
-                const transactionFrequency = transactionsFrequency(address, transactions);
-
-                const tokenData = {};
+                const {lostSwaps, transfers, mismatchedContracts} = await checkTransactionHistory(address, swaps, transactionsHistory);
 
                 // Compare the swaps with the lost swaps.
                 const allSwaps = [...swaps, ...lostSwaps];
+
+                const tokenData = {};
 
                 for (const swap of allSwaps) {
                     const {bought, sold, transactionType} = swap;
@@ -117,6 +116,10 @@ const walletParser = async (addresses, bot, chatId) => {
                     }
                 }
 
+                const transactionFrequency = transactionsFrequency(address, transactionsHistory);
+
+                const firstTransaction = transactionsHistory[0];
+
                 // Add calculated data to JSON.
                 const addressData = {
                     chain_id: 'bsc',
@@ -124,6 +127,13 @@ const walletParser = async (addresses, bot, chatId) => {
                     roi_pct: '',
                     win_rate: '',
                     average_pnl: '',
+                    first_transaction: {
+                        timestamp: firstTransaction.block_timestamp,
+                        hash: firstTransaction.hash,
+                        from: firstTransaction.from_address,
+                        type: firstTransaction.category,
+                        summary: firstTransaction.summary,
+                    },
                     address_info: {
                         total_transactions: transactions.length,
                         total_tokens_traded: Object.entries(tokenData).length,
@@ -139,7 +149,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 let totalEvaluatedTokens = 0;
 
                 let sumSpentForROI = 0;
-                let sumPnLForROI   = 0;
+                let sumPnLForROI = 0;
 
                 for (const [contract, stats] of Object.entries(tokenData)) {
                     let inflowCount = 0;
@@ -162,7 +172,7 @@ const walletParser = async (addresses, bot, chatId) => {
 
                     if (stats.spent > 0) {
                         sumSpentForROI += stats.spent;
-                        sumPnLForROI   += realizedPnl;
+                        sumPnLForROI += realizedPnl;
                     }
 
 
@@ -218,6 +228,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 addressData.roi_pct = `${sumSpentForROI > 0 ? Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0)) : null}%`;
 
                 const filePath = `${addressData.win_rate} ${addressData.average_pnl}bnb - ${address}.json`;
+
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
                 const options = {
