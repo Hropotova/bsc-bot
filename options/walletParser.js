@@ -13,6 +13,7 @@ const {checkTransactionHistory} = require('../services/checkTransactionHistory')
 const {transactionsFrequency} = require('../services/transactionsFrequency');
 const {averageHoldingHours} = require('../services/averageHoldingHours');
 const {contracts} = require('../constants/contracts');
+const {associatedAddresses} = require("../services/associatedAddresses");
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
@@ -117,6 +118,7 @@ const walletParser = async (addresses, bot, chatId) => {
                 }
 
                 const transactionFrequency = transactionsFrequency(address, transactionsHistory);
+                const associatedAddress = associatedAddresses(address, transactionsHistory);
 
                 const firstTransaction = transactionsHistory[0];
 
@@ -134,6 +136,7 @@ const walletParser = async (addresses, bot, chatId) => {
                         type: firstTransaction.category,
                         summary: firstTransaction.summary,
                     },
+                    associated_addresses: associatedAddress,
                     address_info: {
                         total_transactions: transactions.length,
                         total_tokens_traded: Object.entries(tokenData).length,
