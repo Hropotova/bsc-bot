@@ -17,11 +17,11 @@ const associatedAddresses = (address, transactions) => {
     });
 
     const inbound = Object.entries(inboundMap).map(
-        ([addr, count]) => ({address: addr, count})
+        ([wallet, count]) => ({address: wallet, count})
     );
 
     const outbound = Object.entries(outboundMap).map(
-        ([addr, count]) => ({address: addr, count})
+        ([wallet, count]) => ({address: wallet, count})
     );
 
     return {

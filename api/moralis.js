@@ -16,7 +16,7 @@ const getWalletTokenSwaps = async (address) => {
         let allSwaps = [];
 
         while (true) {
-            const url = `wallets/${address}/swaps?chain=bsc&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
+            const url = `wallets/${address}/swaps?chain=${process.env.CHAIN}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
             const response = await api.get(url);
             const data = response.data;
             const swaps = data.result || [];
@@ -41,7 +41,7 @@ const getWalletHistory = async (address) => {
         let allTransactions = [];
 
         while (true) {
-            const url = `wallets/${address}/history?chain=bsc&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
+            const url = `wallets/${address}/history?chain=${process.env.CHAIN}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
             const response = await api.get(url);
             const data = response.data;
             const transactions = data.result || [];
@@ -62,7 +62,7 @@ const getWalletHistory = async (address) => {
 // Get token balances for a specific wallet address and their token prices in USD.
 const getWalletTokenBalances = async (address) => {
     try {
-        const url = `wallets/${address}/tokens?chain=bsc`;
+        const url = `wallets/${address}/tokens?chain=${process.env.CHAIN}`;
         const response = await api.get(url);
 
         return response.data.result || [];
@@ -90,18 +90,18 @@ const getActiveWalletChains = async (address, chains = ['eth', 'bsc', 'base']) =
 // Get the token price denominated in the blockchain's native token and USD.
 const getTokenPrice = async (token) => {
     try {
-        const url = `erc20/${token}/price?chain=bsc`;
+        const url = `erc20/${token}/price?chain=${process.env.CHAIN}`;
         const response = await api.get(url);
         return response.data;
     } catch (error) {
-        console.error(`Error fetching price for token ${token} bsc:`, error.message);
+        console.error(`Error fetching price for token ${token}:`, error.message);
         return null;
     }
 };
 
 // Get the contents of a transaction by the given transaction hash.
 const getTransaction = async (hash) => {
-    const url = `transaction/${hash}?chain=bsc`;
+    const url = `transaction/${hash}?chain=${process.env.CHAIN}`;
     try {
         const response = await api.get(url);
         return response.data;
@@ -113,7 +113,7 @@ const getTransaction = async (hash) => {
 
 // Get the pair stats by using pair address.
 const getPairStats = async (txHash) => {
-    const url = `transaction/${txHash}?chain=bsc`;
+    const url = `transaction/${txHash}?chain=${process.env.CHAIN}`;
     try {
         const response = await api.get(url);
         return response.data;

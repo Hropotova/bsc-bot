@@ -3,10 +3,12 @@ const transactionsFrequency = (address, transactions) => {
 
     if (transactions.length < 2) {
         return {
-            dormant_days: 0,
-            longest_gap_days: 0,
-            total_period_days: 0,
-            dormant_percent: 0,
+            transaction_frequency: {
+                dormant_days: 0,
+                longest_gap_days: 0,
+                total_period_days: 0,
+                dormant_percent: 0,
+            }
         };
     }
 
@@ -30,10 +32,12 @@ const transactionsFrequency = (address, transactions) => {
     const dormant_percent = (total_period_days > 0 ? (dormant_days / total_period_days) * 100 : 0).toFixed(2);
 
     return {
-        dormant_days,
-        longest_gap_days,
-        total_period_days,
-        dormant_percent,
+        transaction_frequency: {
+            dormant_days,
+            longest_gap_days,
+            total_period_days,
+            dormant_percent,
+        }
     };
 }
 

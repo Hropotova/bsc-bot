@@ -1,3 +1,4 @@
+require('dotenv').config();
 const {getTransaction} = require('../api/moralis');
 
 const checkTransactionHistory = async (address, swaps, transactions) => {
@@ -90,14 +91,14 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
                         address: tx.erc20_transfers[0].address,
                     }
                     sold = {
-                        symbol: 'WBNB',
+                        symbol: process.env.CHAIN_TRADE_SYMBOL,
                         amount: -bnbSpent,
                     }
                 }
                 if (sent) {
                     transactionType = 'sell';
                     bought = {
-                        symbol: 'WBNB',
+                        symbol: process.env.CHAIN_TRADE_SYMBOL,
                         amount: bnbSpent,
                     }
                     sold = {

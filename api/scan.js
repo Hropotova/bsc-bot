@@ -5,7 +5,7 @@ const getAllTransactions = async (address) => {
     try {
         const response = await axios.get('https://api.etherscan.io/v2/api', {
             params: {
-                chainid: 56,
+                chainid: process.env.CHAIN_ID,
                 module: 'account',
                 action: 'txlist',
                 address: address,

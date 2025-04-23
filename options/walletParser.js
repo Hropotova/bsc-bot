@@ -9,17 +9,19 @@ const {
     getWalletHistory
 } = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
+
 const {checkTransactionHistory} = require('../services/checkTransactionHistory');
 const {transactionsFrequency} = require('../services/transactionsFrequency');
+const {associatedAddresses} = require('../services/associatedAddresses');
 const {averageHoldingHours} = require('../services/averageHoldingHours');
+
 const {contracts} = require('../constants/contracts');
-const {associatedAddresses} = require("../services/associatedAddresses");
 
 const walletParser = async (addresses, bot, chatId) => {
     const splitAddresses = addresses.split('\n');
 
     // Get BNB price in USD
-    const bnbPrice = await getTokenPrice('0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c');
+    const bnbPrice = await getTokenPrice(process.env.CHAIN_CONTRACT);
 
     // Process each wallet address one by one
     for (const address of splitAddresses) {
@@ -42,8 +44,11 @@ const walletParser = async (addresses, bot, chatId) => {
                 const chains = await getActiveWalletChains(address);
 
                 // Get lost swaps and transfers.
-                const {lostSwaps, transfers, mismatchedContracts} = await checkTransactionHistory(address, swaps, transactionsHistory);
-
+                const {
+                    lostSwaps,
+                    transfers,
+                    mismatchedContracts
+                } = await checkTransactionHistory(address, swaps, transactionsHistory);
                 // Compare the swaps with the lost swaps.
                 const allSwaps = [...swaps, ...lostSwaps];
 
@@ -61,6 +66,7 @@ const walletParser = async (addresses, bot, chatId) => {
                     // Handle BUY transactions.
                     if (transactionType === 'buy') {
                         const token = boughtAddress;
+
                         if (!tokenData[token]) {
                             tokenData[token] = {
                                 boughtAmount: 0,
@@ -81,6 +87,7 @@ const walletParser = async (addresses, bot, chatId) => {
                     // Handle SELL transactions.
                     if (transactionType === 'sell') {
                         const token = soldAddress;
+
                         if (!tokenData[token]) {
                             tokenData[token] = {
                                 boughtAmount: 0,
@@ -99,7 +106,6 @@ const walletParser = async (addresses, bot, chatId) => {
                     }
                 }
 
-
                 // Convert USD balances to WBNB equivalents.
                 for (const token of balances) {
                     const contractAddress = token.token_address;
@@ -117,8 +123,12 @@ const walletParser = async (addresses, bot, chatId) => {
                     }
                 }
 
-                const transactionFrequency = transactionsFrequency(address, transactionsHistory);
-                const associatedAddress = associatedAddresses(address, transactionsHistory);
+
+                // Get transaction frequency for address.
+                const transaction_frequency = transactionsFrequency(address, transactionsHistory);
+
+                // Get associated addresses.
+                const associated_addresses = associatedAddresses(address, transactionsHistory);
 
                 const firstTransaction = transactionsHistory[0];
 
@@ -127,7 +137,6 @@ const walletParser = async (addresses, bot, chatId) => {
                     chain_id: 'bsc',
                     active_chains: chains,
                     roi_pct: '',
-                    win_rate: '',
                     average_pnl: '',
                     first_transaction: {
                         timestamp: firstTransaction.block_timestamp,
@@ -136,11 +145,11 @@ const walletParser = async (addresses, bot, chatId) => {
                         type: firstTransaction.category,
                         summary: firstTransaction.summary,
                     },
-                    associated_addresses: associatedAddress,
+                    associated_addresses,
                     address_info: {
                         total_transactions: transactions.length,
                         total_tokens_traded: Object.entries(tokenData).length,
-                        transaction_frequency: transactionFrequency,
+                        transaction_frequency,
                     },
                     traded_tokens: {},
                 };
@@ -148,16 +157,12 @@ const walletParser = async (addresses, bot, chatId) => {
                 let sumRealizedPnls = 0;
                 let tokenCount = 0;
 
-                let winCount = 0;
-                let totalEvaluatedTokens = 0;
-
                 let sumSpentForROI = 0;
                 let sumPnLForROI = 0;
 
                 for (const [contract, stats] of Object.entries(tokenData)) {
                     let inflowCount = 0;
                     let outflowCount = 0;
-                    let winRate = null;
 
                     const realizedPnl = stats.balance + (stats.received - stats.spent);
 
@@ -173,11 +178,13 @@ const walletParser = async (addresses, bot, chatId) => {
                         ? Number(((realizedPnl / stats.spent) * 100).toFixed(2))
                         : null;
 
+                    const isProfitable = stats.spent > 0 ? realizedPnl > 0 : null;
+                    const isRoiCalculated = stats.spent > 0;
+
                     if (stats.spent > 0) {
                         sumSpentForROI += stats.spent;
                         sumPnLForROI += realizedPnl;
                     }
-
 
                     tokenTransfers.forEach(transfer => {
                         if (transfer.from.toLowerCase() === address.toLowerCase()) {
@@ -188,25 +195,14 @@ const walletParser = async (addresses, bot, chatId) => {
                         }
                     });
 
-                    if (Number(realizedPnl.toFixed(2)) > 0.3) {
-                        winRate = true;
-                    } else if (Number(realizedPnl.toFixed(2)) < -0.3) {
-                        winRate = false;
-                    }
-
-                    if (winRate !== null) {
-                        totalEvaluatedTokens++;
-                        if (winRate === true) {
-                            winCount++;
-                        }
-                    }
-
                     const avgHoldingHours = averageHoldingHours(stats.trades);
 
                     addressData.traded_tokens[contract] = {
                         symbol: stats.symbol,
                         spent: Number(stats.spent.toFixed(2)),
                         roi_pct_token: roiPctToken,
+                        is_profitable: isProfitable,
+                        is_roi_calculated: isRoiCalculated,
                         pnl: {
                             total: Number(realizedPnl.toFixed(2)),
                             realized: Number(stats.received.toFixed(2)),
@@ -221,16 +217,51 @@ const walletParser = async (addresses, bot, chatId) => {
                             buy_count: buyCount,
                             sell_count: sellCount,
                         },
+                        ...(stats.spent === 0 && {
+                            note: 'excluded from ROI/accuracy due to zero cost basis'
+                        })
                     };
                 }
 
                 const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
 
                 addressData.average_pnl = Number(overallAverage.toFixed(2));
-                addressData.win_rate = `${totalEvaluatedTokens > 0 ? Number(((winCount / totalEvaluatedTokens) * 100).toFixed(0)) : 0}%`;
-                addressData.roi_pct = `${sumSpentForROI > 0 ? Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0)) : null}%`;
+                addressData.roi_pct = sumSpentForROI > 0 ? `${Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0))}%` : null;
 
-                const filePath = `${addressData.win_rate} ${addressData.average_pnl}bnb - ${address}.json`;
+                const tokens = Object.values(addressData.traded_tokens);
+                const validTokens = tokens.filter(t => t.spent > 0);
+                const totalSpent = validTokens.reduce((sum, t) => sum + t.spent, 0);
+
+                const token_accuracy_pct = validTokens.length
+                    ? (validTokens.filter(t => t.pnl.total > 0).length / validTokens.length) * 100
+                    : null;
+
+                const avg_token_roi_pct = validTokens.length
+                    ? validTokens.reduce((sum, t) => sum + (t.pnl.total / t.spent) * 100, 0) / validTokens.length
+                    : null;
+
+                let roi_consistency_score = null;
+                if (validTokens.length >= 2) {
+                    const roiValues = validTokens.map(t => (t.pnl.total / t.spent) * 100);
+                    const mean = roiValues.reduce((a, b) => a + b, 0) / roiValues.length;
+                    const variance = roiValues.reduce((a, b) => a + (b - mean) ** 2, 0) / (roiValues.length - 1);
+                    const sd = Math.sqrt(variance);
+                    const cv = sd / mean;
+                    roi_consistency_score = Math.max(0, Math.min(10, 10 - cv * 2));
+                }
+
+                const weighted_roi_score = totalSpent
+                    ? validTokens.reduce((sum, t) => sum + ((t.pnl.total / t.spent) * 100) * t.spent, 0) / totalSpent
+                    : null;
+
+                addressData.performance_score = {
+                    token_accuracy_pct: token_accuracy_pct != null ? Number(token_accuracy_pct.toFixed(2)) : null,
+                    avg_token_roi_pct: avg_token_roi_pct != null ? Number(avg_token_roi_pct.toFixed(2)) : null,
+                    roi_consistency_score: roi_consistency_score != null ? Number(roi_consistency_score.toFixed(2)) : null,
+                    weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
+                };
+
+                const filePath = `${addressData.average_pnl}${process.env.CHAIN_SYMBOL} - ${address}.json`;
 
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
