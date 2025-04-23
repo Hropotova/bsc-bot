@@ -55,7 +55,16 @@ const walletParser = async (addresses, bot, chatId) => {
 
                 const tokenData = {};
 
+                const seen = new Set();
+                const uniqueSwaps = [];
+
                 for (const swap of allSwaps) {
+                    if (seen.has(swap.transactionHash)) continue;
+                    seen.add(swap.transactionHash);
+                    uniqueSwaps.push(swap);
+                }
+
+                for (const swap of uniqueSwaps) {
                     const {bought, sold, transactionType} = swap;
                     if (!bought || !sold) continue;
 
@@ -263,7 +272,7 @@ const walletParser = async (addresses, bot, chatId) => {
                     weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
                 };
 
-                const filePath = `${addressData.average_pnl}${process.env.CHAIN_SYMBOL} - ${address}.json`;
+                const filePath = `${addressData.average_pnl}${process.env.CHAIN_SYMBOL.toLowerCase()} - ${address}.json`;
 
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
