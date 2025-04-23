@@ -49,6 +49,7 @@ const walletParser = async (addresses, bot, chatId) => {
                     transfers,
                     mismatchedContracts
                 } = await checkTransactionHistory(address, swaps, transactionsHistory);
+
                 // Compare the swaps with the lost swaps.
                 const allSwaps = [...swaps, ...lostSwaps];
 
@@ -130,7 +131,8 @@ const walletParser = async (addresses, bot, chatId) => {
                 // Get associated addresses.
                 const associated_addresses = associatedAddresses(address, transactionsHistory);
 
-                const firstTransaction = transactionsHistory[0];
+                // Get first transaction that include native token.
+                const firstTransaction = transactionsHistory.find(tx => tx.summary && tx.summary.includes(process.env.CHAIN_SYMBOL),);
 
                 // Add calculated data to JSON.
                 const addressData = {
