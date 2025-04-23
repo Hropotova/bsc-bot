@@ -272,6 +272,11 @@ const walletParser = async (addresses, bot, chatId) => {
                     weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
                 };
 
+                addressData.agent_summary = {
+                    raw: "",
+                    tags: [],
+                };
+
                 const filePath = `${addressData.average_pnl}${process.env.CHAIN_SYMBOL.toLowerCase()} - ${address}.json`;
 
                 fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
