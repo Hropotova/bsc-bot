@@ -272,10 +272,19 @@ const walletParser = async (addresses, bot, chatId) => {
                     weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
                 };
 
+                // Agent summary block.
                 addressData.agent_summary = {
-                    raw: "",
+                    raw: '',
                     tags: [],
                 };
+
+
+                // Manual feedback block.
+                addressData.manual_feedback = {
+                    decision: '',
+                    note: '',
+                    timestamp: '',
+                }
 
                 const filePath = `${addressData.average_pnl}${process.env.CHAIN_SYMBOL.toLowerCase()} - ${address}.json`;
 
