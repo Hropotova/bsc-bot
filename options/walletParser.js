@@ -6,7 +6,8 @@ const {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
-    getWalletHistory
+    getWalletHistory,
+    getPairStats
 } = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
 
@@ -84,6 +85,7 @@ const walletParser = async (addresses, bot, chatId) => {
                                 spent: 0,
                                 received: 0,
                                 contractAddress: boughtAddress,
+                                pairAddress: swap.pairAddress,
                                 symbol: boughtSymbol,
                                 balance: 0,
                                 trades: []
@@ -105,6 +107,7 @@ const walletParser = async (addresses, bot, chatId) => {
                                 spent: 0,
                                 received: 0,
                                 contractAddress: soldAddress,
+                                pairAddress: swap.pairAddress,
                                 symbol: soldSymbol,
                                 balance: 0,
                                 trades: [],
@@ -132,7 +135,6 @@ const walletParser = async (addresses, bot, chatId) => {
                         delete tokenData[lowerToken];
                     }
                 }
-
 
                 // Get transaction frequency for address.
                 const transaction_frequency = transactionsFrequency(address, transactionsHistory);
@@ -174,6 +176,18 @@ const walletParser = async (addresses, bot, chatId) => {
                 for (const [contract, stats] of Object.entries(tokenData)) {
                     let inflowCount = 0;
                     let outflowCount = 0;
+                    let diffMinutes = null
+                    const pairStat = await getPairStats(stats.pairAddress);
+
+                    if (Array.isArray(stats.trades) && stats.trades.length > 0) {
+                        const sortedTrades = stats.trades.slice().sort(
+                            (a, b) => new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
+                        );
+                        const firstTrade = sortedTrades[0];
+                        const createdTime = new Date(pairStat.pairCreated);
+                        const firstBuyTime = new Date(firstTrade.blockTimestamp);
+                        diffMinutes = Math.round((firstBuyTime - createdTime) / (1000 * 60));
+                    }
 
                     const realizedPnl = stats.balance + (stats.received - stats.spent);
 
@@ -224,6 +238,7 @@ const walletParser = async (addresses, bot, chatId) => {
                             inflow_count: inflowCount,
                             outflow_count: outflowCount,
                         },
+                        launch_time_first_buy: diffMinutes,
                         trades: {
                             buy_count: buyCount,
                             sell_count: sellCount,

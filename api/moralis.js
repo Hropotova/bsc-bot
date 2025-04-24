@@ -113,7 +113,7 @@ const getTransaction = async (hash) => {
 
 // Get the pair stats by using pair address.
 const getPairStats = async (txHash) => {
-    const url = `transaction/${txHash}?chain=${process.env.CHAIN}`;
+    const url = `pairs/${txHash}/stats?chain=${process.env.CHAIN}`;
     try {
         const response = await api.get(url);
         return response.data;
