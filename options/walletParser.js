@@ -184,7 +184,7 @@ const walletParser = async (addresses, bot, chatId) => {
                             (a, b) => new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
                         );
                         const firstTrade = sortedTrades[0];
-                        const createdTime = new Date(pairStat.pairCreated);
+                        const createdTime = new Date(pairStat?.pairCreated);
                         const firstBuyTime = new Date(firstTrade.blockTimestamp);
                         diffMinutes = Math.round((firstBuyTime - createdTime) / (1000 * 60));
                     }
