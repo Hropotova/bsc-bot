@@ -152,11 +152,11 @@ const walletParser = async (addresses, bot, chatId) => {
                     roi_pct: '',
                     average_pnl: '',
                     first_transaction: {
-                        timestamp: firstTransaction.block_timestamp,
-                        hash: firstTransaction.hash,
-                        from: firstTransaction.from_address,
-                        type: firstTransaction.category,
-                        summary: firstTransaction.summary,
+                        timestamp: firstTransaction?.block_timestamp,
+                        hash: firstTransaction?.hash,
+                        from: firstTransaction?.from_address,
+                        type: firstTransaction?.category,
+                        summary: firstTransaction?.summary,
                     },
                     associated_addresses,
                     address_info: {

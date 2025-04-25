@@ -20,7 +20,7 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
     // Check missing transactions
     const swapHashes = new Set(swaps.map((s) => s.transactionHash.toLowerCase()));
     const missingTransfers = ercTransfers.filter(
-        (tx) => !swapHashes.has(tx.hash.toLowerCase())
+        (tx) => !swapHashes.has(tx?.hash.toLowerCase())
     );
 
     const swapsArray = [];
@@ -28,24 +28,24 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
 
     const mismatchedTransfers = transactions.filter(
         tx =>
-            tx.from_address.toLowerCase() !== address.toLowerCase() &&
-            tx.erc20_transfers.length > 0
+            tx?.from_address.toLowerCase() !== address.toLowerCase() &&
+            tx?.erc20_transfers.length > 0
     );
 
     const mismatchedContracts = Array.from(
         new Set(
             mismatchedTransfers.map(
-                tx => tx.erc20_transfers[0].address.toLowerCase()
+                tx => tx?.erc20_transfers[0].address.toLowerCase()
             )
         )
     );
 
     for (const [i, tx] of missingTransfers.entries()) {
 
-        const decorated = await getTransaction(tx.hash);
+        const decorated = await getTransaction(tx?.hash);
         if (decorated) {
 
-            if (tx.category === 'token swap') {
+            if (tx?.category === 'token swap') {
                 const transfers = decorated.logs.filter(
                     (log) =>
                         log.topic0 ===
@@ -85,10 +85,10 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
                 if (bnbSpent && received) {
                     transactionType = 'buy';
                     bought = {
-                        symbol: tx.erc20_transfers[0].token_symbol,
+                        symbol: tx?.erc20_transfers[0].token_symbol,
                         amount: tokenNameReceived,
-                        address: tx.erc20_transfers[0].address,
-                        pairAddress: tx.erc20_transfers[0].to_address,
+                        address: tx?.erc20_transfers[0].address,
+                        pairAddress: tx?.erc20_transfers[0].to_address,
                     }
                     sold = {
                         symbol: process.env.CHAIN_TRADE_SYMBOL,
@@ -102,17 +102,17 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
                         amount: bnbSpent,
                     }
                     sold = {
-                        symbol: tx.erc20_transfers[0].token_symbol,
+                        symbol: tx?.erc20_transfers[0].token_symbol,
                         amount: tokenNameSent,
-                        address: tx.erc20_transfers[0].address,
-                        pairAddress: tx.erc20_transfers[0].to_address,
+                        address: tx?.erc20_transfers[0].address,
+                        pairAddress: tx?.erc20_transfers[0].to_address,
                     }
                 }
 
                 const swapObject = {
                     transactionType,
-                    blockTimestamp: tx.block_timestamp,
-                    transactionHash: tx.hash,
+                    blockTimestamp: tx?.block_timestamp,
+                    transactionHash: tx?.hash,
                     from: decorated.from_address,
                     to: decorated.to_address,
                     bought,
@@ -121,10 +121,11 @@ const checkTransactionHistory = async (address, swaps, transactions) => {
                 swapsArray.push(swapObject);
             } else {
                 const transferObject = {
-                    transactionHash: tx.hash,
-                    tokenSymbol: tx.erc20_transfers[0].token_symbol,
-                    value: tx.value,
-                    contract: tx.erc20_transfers[0].address,
+                    transactionHash: tx?.hash,
+                    tokenSymbol: tx?.erc20_transfers[0].token_symbol,
+                    blockTimestamp: tx?.block_timestamp,
+                    value: tx?.value,
+                    contract: tx?.erc20_transfers[0].address,
                     from: decorated.from_address,
                     to: decorated.to_address
                 };
