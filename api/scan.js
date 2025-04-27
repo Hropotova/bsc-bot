@@ -1,11 +1,11 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const getAllTransactions = async (address) => {
+const getAllTransactions = async (address, chain_id) => {
     try {
         const response = await axios.get('https://api.etherscan.io/v2/api', {
             params: {
-                chainid: process.env.CHAIN_ID,
+                chainid: chain_id,
                 module: 'account',
                 action: 'txlist',
                 address: address,

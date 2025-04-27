@@ -10,13 +10,13 @@ const api = axios.create({
 });
 
 // Get all swap related transactions (buy, sell).
-const getWalletTokenSwaps = async (address) => {
+const getWalletTokenSwaps = async (address, chain) => {
     try {
         let cursor = null;
         let allSwaps = [];
 
         while (true) {
-            const url = `wallets/${address}/swaps?chain=${process.env.CHAIN}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
+            const url = `wallets/${address}/swaps?chain=${chain}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
             const response = await api.get(url);
             const data = response.data;
             const swaps = data.result || [];
@@ -35,13 +35,13 @@ const getWalletTokenSwaps = async (address) => {
 };
 
 // Retrieve the full transaction history of a specified wallet address, including sends, receives, token.
-const getWalletHistory = async (address) => {
+const getWalletHistory = async (address, chain) => {
     try {
         let cursor = null;
         let allTransactions = [];
 
         while (true) {
-            const url = `wallets/${address}/history?chain=${process.env.CHAIN}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
+            const url = `wallets/${address}/history?chain=${chain}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
             const response = await api.get(url);
             const data = response.data;
             const transactions = data.result || [];
@@ -60,9 +60,9 @@ const getWalletHistory = async (address) => {
 };
 
 // Get token balances for a specific wallet address and their token prices in USD.
-const getWalletTokenBalances = async (address) => {
+const getWalletTokenBalances = async (address, chain) => {
     try {
-        const url = `wallets/${address}/tokens?chain=${process.env.CHAIN}`;
+        const url = `wallets/${address}/tokens?chain=${chain}`;
         const response = await api.get(url);
 
         return response.data.result || [];
@@ -88,9 +88,9 @@ const getActiveWalletChains = async (address, chains = ['eth', 'bsc', 'base']) =
 };
 
 // Get the token price denominated in the blockchain's native token and USD.
-const getTokenPrice = async (token) => {
+const getTokenPrice = async (token, chain) => {
     try {
-        const url = `erc20/${token}/price?chain=${process.env.CHAIN}`;
+        const url = `erc20/${token}/price?chain=${chain}`;
         const response = await api.get(url);
         return response.data;
     } catch (error) {
@@ -100,8 +100,8 @@ const getTokenPrice = async (token) => {
 };
 
 // Get the contents of a transaction by the given transaction hash.
-const getTransaction = async (hash) => {
-    const url = `transaction/${hash}?chain=${process.env.CHAIN}`;
+const getTransaction = async (hash, chain) => {
+    const url = `transaction/${hash}?chain=${chain}`;
     try {
         const response = await api.get(url);
         return response.data;
@@ -112,13 +112,13 @@ const getTransaction = async (hash) => {
 };
 
 // Get the pair stats by using pair address.
-const getPairStats = async (txHash) => {
-    const url = `pairs/${txHash}/stats?chain=${process.env.CHAIN}`;
+const getPairStats = async (txHash, chain) => {
+    const url = `pairs/${txHash}/stats?chain=${chain}`;
     try {
         const response = await api.get(url);
         return response.data;
     } catch (error) {
-        console.error(`Failed to ge ${txHash}:`, error.message);
+        console.error(`Failed to get ${txHash}:`, error.message);
         return null;
     }
 };

@@ -1,86 +1,96 @@
 require('dotenv').config();
+const fs = require('fs');
 const TelegramBot = require('node-telegram-bot-api');
-const express = require('express');
 
-const {walletParser} = require('./options/walletParser');
+const { walletParserMultiChain, walletParserSingleChain } = require('./options/walletParser');
+const config = require('./config.js');
 
-const app = express();
 const token = process.env.TELEGRAM_TOKEN;
-const bot = new TelegramBot(token, {polling: true});
-const PORT = process.env.PORT || 3000;
+const bot = new TelegramBot(token, { polling: true });
 
 const userState = {};
-let contractState = '';
 
-bot.onText(/\/start/, (msg) => {
-    const chatId = msg.chat.id;
-    const options = {
+/**
+ * Display the mode selection buttons.
+ */
+function showModeButtons(chatId) {
+    const opts = {
         reply_markup: JSON.stringify({
             inline_keyboard: [
-                [{text: 'Wallet address', callback_data: 'option1'}],
+                [{ text: 'Chain ID',      callback_data: 'chain_id' }],
+                [{ text: 'Active Chains', callback_data: 'active_chains' }],
             ]
         })
     };
-    bot.sendMessage(chatId, 'Choose an option:', options);
-});
+    bot.sendMessage(chatId, 'Please select an operation mode:', opts);
+}
 
-bot.on('callback_query', (callbackQuery) => {
-    const message = callbackQuery.message;
+bot.onText(/\/start/, msg => showModeButtons(msg.chat.id));
+bot.onText(/\/change/, msg => showModeButtons(msg.chat.id));
+
+bot.on('callback_query', async ({ message, data }) => {
     const chatId = message.chat.id;
-    const data = callbackQuery.data;
 
-    userState[chatId] = data;
+    if (data === 'chain_id') {
+        userState[chatId] = { mode: 'chain_id' };
+        return bot.sendMessage(chatId, 'Enter the chain ID (e.g., bsc, eth, base):');
+    }
 
-    if (data === 'option1') {
-        bot.sendMessage(chatId, 'You chose wallet address. Please send me a wallet address.');
+    if (data === 'active_chains') {
+        userState[chatId] = { mode: 'active_chains' };
+        return bot.sendMessage(chatId, 'Now send one or more wallet addresses:');
     }
 });
 
-bot.on('message', async (msg) => {
+bot.on('message', async msg => {
     const chatId = msg.chat.id;
+    const text = msg.text.trim();
+
+    // Ignore command messages here
+    if (text.startsWith('/start') || text.startsWith('/change')) {
+        return;
+    }
+
+    const state = userState[chatId];
+    if (!state) {
+        return showModeButtons(chatId);
+    }
 
     try {
-
-        if (msg.text.startsWith('/start')) {
-            return;
+        // Step 1: in 'chain_id' mode, expect the user to enter the chain key
+        if (state.mode === 'chain_id' && !state.chain) {
+            const chainKey = text.toLowerCase();
+            if (!config[chainKey]) {
+                return bot.sendMessage(
+                    chatId,
+                    'Unknown chain ID. Available options: ' + Object.keys(config).join(', ')
+                );
+            }
+            state.chain = chainKey;
+            return bot.sendMessage(
+                chatId,
+                `Chain ID set to '${chainKey}'. Now send one or more wallet addresses:`
+            );
         }
 
-        const message = msg.text.trim();
-
-        if (userState[chatId] === 'option1') {
-            await walletParser(message, bot, chatId)
-        } else if (userState[chatId] === 'option2') {
-            const options = {
-                reply_markup: JSON.stringify({
-                    inline_keyboard: [
-                        [{text: 'Single date', callback_data: 'single_date'}],
-                        [{text: 'Range date', callback_data: 'range_date'}],
-                    ]
-                })
-            };
-            bot.sendMessage(chatId, 'Choose a date:', options);
-
-            contractState = message;
+        // Step 2: in 'chain_id' mode, with chain selected, parse the addresses on that single chain
+        if (state.mode === 'chain_id' && state.chain) {
+            await walletParserSingleChain(text, bot, chatId, state.chain);
+            delete userState[chatId];
+            return showModeButtons(chatId);
         }
 
-    } catch (error) {
-        console.error('An error occurred:', error);
-        bot.sendMessage(msg.chat.id, 'An error occurred. Please try again later.');
-        const options = {
-            reply_markup: JSON.stringify({
-                inline_keyboard: [
-                    [{text: 'Wallet address', callback_data: 'option1'}],
-                ]
-            })
-        };
-        bot.sendMessage(chatId, 'Choose an option:', options);
+        // In 'active_chains' mode, parse addresses across all active chains
+        if (state.mode === 'active_chains') {
+            await walletParserMultiChain(text, bot, chatId);
+            delete userState[chatId];
+            return showModeButtons(chatId);
+        }
+
+    } catch (err) {
+        console.error('Error handling message:', err);
+        await bot.sendMessage(chatId, 'An error occurred. Please try again later.');
+        delete userState[chatId];
+        showModeButtons(chatId);
     }
-});
-
-bot.on('polling_error', (error) => {
-    console.error(error.code);
-});
-
-app.listen(PORT, function () {
-    console.log(`Telegram bot is listening on port ${PORT}`);
 });
