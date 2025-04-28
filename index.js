@@ -1,24 +1,25 @@
 require('dotenv').config();
 const fs = require('fs');
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
-const { walletParserMultiChain, walletParserSingleChain } = require('./options/walletParser');
+const {walletParserMultiChain, walletParserSingleChain} = require('./options/walletParser');
 const config = require('./config.js');
 
 const token = process.env.TELEGRAM_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(token, {polling: true});
+
+const app = express();
+const PORT = process.env.PORT || 3000;
 
 const userState = {};
 
-/**
- * Display the mode selection buttons.
- */
 function showModeButtons(chatId) {
     const opts = {
         reply_markup: JSON.stringify({
             inline_keyboard: [
-                [{ text: 'Chain ID',      callback_data: 'chain_id' }],
-                [{ text: 'Active Chains', callback_data: 'active_chains' }],
+                [{text: 'Chain ID', callback_data: 'chain_id'}],
+                [{text: 'Active Chains', callback_data: 'active_chains'}],
             ]
         })
     };
@@ -28,16 +29,16 @@ function showModeButtons(chatId) {
 bot.onText(/\/start/, msg => showModeButtons(msg.chat.id));
 bot.onText(/\/change/, msg => showModeButtons(msg.chat.id));
 
-bot.on('callback_query', async ({ message, data }) => {
+bot.on('callback_query', async ({message, data}) => {
     const chatId = message.chat.id;
 
     if (data === 'chain_id') {
-        userState[chatId] = { mode: 'chain_id' };
+        userState[chatId] = {mode: 'chain_id'};
         return bot.sendMessage(chatId, 'Enter the chain ID (e.g., bsc, eth, base):');
     }
 
     if (data === 'active_chains') {
-        userState[chatId] = { mode: 'active_chains' };
+        userState[chatId] = {mode: 'active_chains'};
         return bot.sendMessage(chatId, 'Now send one or more wallet addresses:');
     }
 });
@@ -46,7 +47,6 @@ bot.on('message', async msg => {
     const chatId = msg.chat.id;
     const text = msg.text.trim();
 
-    // Ignore command messages here
     if (text.startsWith('/start') || text.startsWith('/change')) {
         return;
     }
@@ -57,7 +57,6 @@ bot.on('message', async msg => {
     }
 
     try {
-        // Step 1: in 'chain_id' mode, expect the user to enter the chain key
         if (state.mode === 'chain_id' && !state.chain) {
             const chainKey = text.toLowerCase();
             if (!config[chainKey]) {
@@ -73,14 +72,12 @@ bot.on('message', async msg => {
             );
         }
 
-        // Step 2: in 'chain_id' mode, with chain selected, parse the addresses on that single chain
         if (state.mode === 'chain_id' && state.chain) {
             await walletParserSingleChain(text, bot, chatId, state.chain);
             delete userState[chatId];
             return showModeButtons(chatId);
         }
 
-        // In 'active_chains' mode, parse addresses across all active chains
         if (state.mode === 'active_chains') {
             await walletParserMultiChain(text, bot, chatId);
             delete userState[chatId];
@@ -93,4 +90,8 @@ bot.on('message', async msg => {
         delete userState[chatId];
         showModeButtons(chatId);
     }
+});
+
+app.listen(PORT, () => {
+    console.log(`Express server listening on port ${PORT}`);
 });
