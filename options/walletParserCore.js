@@ -1,5 +1,6 @@
 require('dotenv').config();
 const fs = require('fs');
+const path = require('path');
 
 const {
     getWalletTokenSwaps,
@@ -28,6 +29,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
             const chains = chainsToProcess.length
                 ? chainsToProcess
                 : await getActiveWalletChains(address);
+
+            const chainResults = {};
 
             for (const chainKey of chains) {
                 const cfg = config[chainKey];
@@ -82,7 +85,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         // Handle BUY transactions.
                         if (transactionType === 'buy') {
-                            const token = boughtAddress.toLowerCase();;
+                            const token = boughtAddress.toLowerCase();
+                            ;
 
                             if (!tokenData[token]) {
                                 tokenData[token] = {
@@ -293,42 +297,89 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
                     };
 
-                    // Agent summary block.
-                    addressData.agent_summary = {
-                        raw: '',
-                        tags: [],
-                    };
-
-
-                    // Manual feedback block.
-                    addressData.manual_feedback = {
-                        decision: '',
-                        note: '',
-                        timestamp: '',
-                    }
+                    // Save result for this chain
+                    chainResults[chainKey] = addressData;
 
                     const filePath = `${addressData.average_pnl}${cfg.symbol.toLowerCase()} - ${address}.json`;
-
                     fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
-
-                    const options = {
+                    await bot.sendDocument(chatId, filePath, {
                         caption: `\`${address}\``,
                         parse_mode: 'Markdown',
-                    };
-
-                    await bot.sendDocument(chatId, filePath, options);
-                    fs.unlinkSync(filePath);
-                } else {
-                    await bot.sendMessage(chatId, `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``, {
-                        parse_mode: 'MarkdownV2',
                     });
+                    fs.unlinkSync(filePath);
+
+                } else {
+                    await bot.sendMessage(chatId,
+                        `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``,
+                        {parse_mode: 'MarkdownV2'}
+                    );
                 }
             }
+
+            if (chains.length > 1) {
+                const chain_stats = {};
+                const summary_tags = [];
+                let bestChain = null;
+                let bestScore = -Infinity;
+
+                for (const key of Object.keys(chainResults)) {
+                    const data = chainResults[key];
+                    if (data.performance_score && data.performance_score.weighted_roi_score != null) {
+                        const score = data.performance_score.weighted_roi_score;
+                        const tag = score > 0 ? '+' : (score < 0 ? '-' : '0');
+                        summary_tags.push(`${key}${tag}`);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            bestChain = key;
+                        }
+                        chain_stats[key] = {
+                            status: 'complete',
+                            score,
+                            tag,
+                            performance: {
+                                weighted_roi_score: data.performance_score.weighted_roi_score,
+                                roi_consistency_score: data.performance_score.roi_consistency_score,
+                                token_accuracy_pct: data.performance_score.token_accuracy_pct
+                            },
+                            comment: ''
+                        };
+                    } else {
+                        chain_stats[key] = {status: 'timeout'};
+                    }
+                }
+
+                const aggregated = {
+                    address,
+                    cross_chain_summary: {
+                        chain_stats,
+                        highlights: {
+                            most_profitable_chain: bestChain,
+                            summary_tags
+                        },
+                        notes: "",
+                        last_updated: new Date().toISOString()
+                    }
+                };
+
+                const aggDir = path.resolve(__dirname, '..', 'aggregates');
+                if (!fs.existsSync(aggDir)) fs.mkdirSync(aggDir, {recursive: true});
+                const aggPath = path.join(aggDir, `${address}_multichain.json`);
+                fs.writeFileSync(aggPath, JSON.stringify(aggregated, null, 2));
+
+                await bot.sendDocument(chatId, aggPath, {
+                    caption: `\`${address}\``,
+                    parse_mode: 'Markdown',
+                });
+                fs.unlinkSync(aggPath);
+            }
+
         } catch (error) {
             console.error(`Error parsing wallet ${address}:`, error);
-            await bot.sendMessage(chatId, `Error parsing wallet \`${address}\`: ${error}`, {parse_mode: 'Markdown'});
+            await bot.sendMessage(chatId,
+                `Error parsing wallet \`${address}\`: ${error.message}`,
+                {parse_mode: 'Markdown'}
+            );
         }
-
     }
 };
 

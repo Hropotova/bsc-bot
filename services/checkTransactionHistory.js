@@ -40,10 +40,9 @@ const checkTransactionHistory = async (address, swaps, transactions, tradeSymbol
     );
 
     for (const [i, tx] of missingTransfers.entries()) {
-
         const decorated = await getTransaction(tx?.hash, chain);
-
         if (decorated) {
+
             if (tx?.category === 'token swap') {
                 const transfers = decorated.logs.filter(
                     (log) =>
@@ -71,6 +70,13 @@ const checkTransactionHistory = async (address, swaps, transactions, tradeSymbol
 
                 const bnbSpent = decorated.value * 0.000000000000000001;
 
+                const tokenNameReceived = received
+                    ? (contractAddresses.includes(received.token) ? received.token : received.token)
+                    : "";
+                const tokenNameSent = sent
+                    ? (contractAddresses.includes(sent.token) ? sent.token : sent.token)
+                    : "";
+
                 let bought = {}
                 let sold = {}
                 let transactionType = {}
@@ -78,7 +84,7 @@ const checkTransactionHistory = async (address, swaps, transactions, tradeSymbol
                     transactionType = 'buy';
                     bought = {
                         symbol: tx?.erc20_transfers[0].token_symbol,
-                        amount: bnbSpent,
+                        amount: tokenNameReceived,
                         address: tx?.erc20_transfers[0].address,
                         pairAddress: tx?.erc20_transfers[0].to_address,
                     }
@@ -95,7 +101,7 @@ const checkTransactionHistory = async (address, swaps, transactions, tradeSymbol
                     }
                     sold = {
                         symbol: tx?.erc20_transfers[0].token_symbol,
-                        amount: -bnbSpent,
+                        amount: tokenNameSent,
                         address: tx?.erc20_transfers[0].address,
                         pairAddress: tx?.erc20_transfers[0].to_address,
                     }
