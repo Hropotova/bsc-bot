@@ -86,7 +86,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         // Handle BUY transactions.
                         if (transactionType === 'buy') {
                             const token = boughtAddress.toLowerCase();
-                            ;
 
                             if (!tokenData[token]) {
                                 tokenData[token] = {
