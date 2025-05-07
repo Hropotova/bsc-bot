@@ -58,7 +58,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         lostSwaps,
                         transfers,
                         mismatchedContracts
-                    } = await checkTransactionHistory(address, swaps, transactionsHistory, cfg.trade_symbol, cfg.chain);
+                    } = await checkTransactionHistory(address, swaps, transactionsHistory, cfg.symbol, cfg.trade_symbol, cfg.chain);
 
                     // Compare the swaps with the lost swaps.
                     const allSwaps = [...swaps, ...lostSwaps];
@@ -67,7 +67,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     const seen = new Set();
                     const uniqueSwaps = [];
-
                     for (const swap of allSwaps) {
                         if (seen.has(swap.transactionHash)) continue;
                         seen.add(swap.transactionHash);
@@ -89,8 +88,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             if (!tokenData[token]) {
                                 tokenData[token] = {
-                                    boughtAmount: 0,
-                                    soldAmount: 0,
                                     spent: 0,
                                     received: 0,
                                     contractAddress: boughtAddress,
@@ -100,7 +97,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     trades: []
                                 };
                             }
-                            tokenData[token].boughtAmount += parseFloat(bought.amount);
                             tokenData[token].spent += Math.abs(parseFloat(sold.amount));
                             tokenData[token].trades.push(swap);
                         }
@@ -111,8 +107,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             if (!tokenData[token]) {
                                 tokenData[token] = {
-                                    boughtAmount: 0,
-                                    soldAmount: 0,
                                     spent: 0,
                                     received: 0,
                                     contractAddress: soldAddress,
@@ -122,7 +116,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     trades: [],
                                 };
                             }
-                            tokenData[token].soldAmount += Math.abs(parseFloat(sold.amount));
                             tokenData[token].received += parseFloat(bought.amount);
                             tokenData[token].trades.push(swap);
                         }

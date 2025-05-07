@@ -1,138 +1,109 @@
-const {getTransaction} = require('../api/moralis');
-
-const checkTransactionHistory = async (address, swaps, transactions, tradeSymbol, chain) => {
+const checkTransactionHistory = async (address, swaps, transactions, symbol, tradeSymbol, chain) => {
     const swapsByContract = {};
     for (const swap of swaps) {
         const tokenAddress = swap?.baseToken;
         if (!tokenAddress) continue;
-        if (!swapsByContract[tokenAddress.toLowerCase()]) {
-            swapsByContract[tokenAddress.toLowerCase()] = [];
-        }
-        swapsByContract[tokenAddress.toLowerCase()].push(swap);
+        const key = tokenAddress.toLowerCase();
+        swapsByContract[key] = swapsByContract[key] || [];
+        swapsByContract[key].push(swap);
     }
 
-    const contractAddresses = Object.keys(swapsByContract);
+    const ercTransfers = transactions.filter(tx =>
+        tx.from_address.toLowerCase() === address.toLowerCase() &&
+        Array.isArray(tx.erc20_transfers) &&
+        tx.erc20_transfers.length > 0
+    );
 
-    // Filter spam token and transactions
-    const ercTransfers = transactions.filter(i => i.from_address.toLowerCase() === address.toLowerCase() && i.erc20_transfers.length !== 0);
-
-    // Check missing transactions
-    const swapHashes = new Set(swaps.map((s) => s.transactionHash.toLowerCase()));
-    const missingTransfers = ercTransfers.filter(
-        (tx) => !swapHashes.has(tx?.hash.toLowerCase())
+    const swapHashes = new Set(swaps.map(s => s.transactionHash.toLowerCase()));
+    const missingTransfers = ercTransfers.filter(tx =>
+        !swapHashes.has(tx.hash.toLowerCase())
     );
 
     const swapsArray = [];
     const transfersArray = [];
 
-    const mismatchedTransfers = transactions.filter(
-        tx =>
-            tx?.from_address.toLowerCase() !== address.toLowerCase() &&
-            tx?.erc20_transfers.length > 0
+    const mismatchedTransfers = transactions.filter(tx =>
+        tx.from_address.toLowerCase() !== address.toLowerCase() &&
+        Array.isArray(tx.erc20_transfers) &&
+        tx.erc20_transfers.length > 0
     );
+    const mismatchedContracts = Array.from(new Set(
+        mismatchedTransfers.map(tx => tx.erc20_transfers[0].address.toLowerCase())
+    ));
 
-    const mismatchedContracts = Array.from(
-        new Set(
-            mismatchedTransfers.map(
-                tx => tx?.erc20_transfers[0].address.toLowerCase()
-            )
-        )
-    );
+    const swapRegex = /Swapped\s+([\d,\.]+)\s+\$?([A-Za-z0-9_]+)\s+for\s+([\d,\.]+)\s+\$?([A-Za-z0-9_]+)/;
 
-    for (const [i, tx] of missingTransfers.entries()) {
-        const decorated = await getTransaction(tx?.hash, chain);
-        if (decorated) {
-
-            if (tx?.category === 'token swap') {
-                const transfers = decorated.logs.filter(
-                    (log) =>
-                        log.topic0 ===
-                        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef'
-                );
-
-                const userAddress = decorated.from_address.toLowerCase();
-                let received = null;
-                let sent = null;
-
-                for (const log of transfers) {
-                    const topic1 = `0x${log.topic1.slice(26)}`.toLowerCase();
-                    const topic2 = `0x${log.topic2.slice(26)}`.toLowerCase();
-                    const value = log.data;
-                    const token = log.address.toLowerCase();
-
-                    if (topic1 === userAddress) {
-                        sent = {token, value};
-                    }
-                    if (topic2 === userAddress) {
-                        received = {token, value};
-                    }
-                }
-
-                const bnbSpent = decorated.value * 0.000000000000000001;
-
-                const tokenNameReceived = received
-                    ? (contractAddresses.includes(received.token) ? received.token : received.token)
-                    : "";
-                const tokenNameSent = sent
-                    ? (contractAddresses.includes(sent.token) ? sent.token : sent.token)
-                    : "";
-
-                let bought = {}
-                let sold = {}
-                let transactionType = {}
-                if (bnbSpent && received) {
-                    transactionType = 'buy';
-                    bought = {
-                        symbol: tx?.erc20_transfers[0].token_symbol,
-                        amount: tokenNameReceived,
-                        address: tx?.erc20_transfers[0].address,
-                        pairAddress: tx?.erc20_transfers[0].to_address,
-                    }
-                    sold = {
-                        symbol: tradeSymbol,
-                        amount: -bnbSpent,
-                    }
-                }
-                if (sent) {
-                    transactionType = 'sell';
-                    bought = {
-                        symbol: tradeSymbol,
-                        amount: bnbSpent,
-                    }
-                    sold = {
-                        symbol: tx?.erc20_transfers[0].token_symbol,
-                        amount: tokenNameSent,
-                        address: tx?.erc20_transfers[0].address,
-                        pairAddress: tx?.erc20_transfers[0].to_address,
-                    }
-                }
-
-                const swapObject = {
-                    transactionType,
-                    blockTimestamp: tx?.block_timestamp,
-                    transactionHash: tx?.hash,
-                    from: decorated.from_address,
-                    to: decorated.to_address,
-                    bought,
-                    sold,
-                };
-                swapsArray.push(swapObject);
-            } else {
-                const transferObject = {
-                    transactionHash: tx?.hash,
-                    tokenSymbol: tx?.erc20_transfers[0].token_symbol,
-                    blockTimestamp: tx?.block_timestamp,
-                    value: tx?.value,
-                    contract: tx?.erc20_transfers[0].address,
-                    from: decorated.from_address,
-                    to: decorated.to_address
-                };
-                transfersArray.push(transferObject);
+    for (const tx of missingTransfers) {
+        if (tx.category === 'token swap') {
+            const summary = tx.summary;
+            const match = summary?.match(swapRegex);
+            if (!match) {
+                console.warn('Невідомий формат summary:', summary);
+                continue;
             }
+
+            const amountIn = parseFloat(match[1].replace(/,/g, ''));
+            const symbolIn = match[2];
+            const amountOut = parseFloat(match[3].replace(/,/g, ''));
+            const symbolOut = match[4];
+
+            let transactionType, bought, sold;
+
+            if (symbolIn === symbol) {
+                transactionType = 'buy';
+                bought = {
+                    symbol: tx?.erc20_transfers[0].token_symbol,
+                    amount: amountIn,
+                    address: tx?.erc20_transfers[0].address,
+                    pairAddress: tx?.erc20_transfers[0].to_address,
+                };
+                sold = {
+                    symbol: tradeSymbol,
+                    amount: -amountIn,
+                };
+            } else if (symbolOut === symbol) {
+                transactionType = 'sell';
+                sold = {
+                    symbol: tx?.erc20_transfers[0].token_symbol,
+                    amount: amountOut,
+                    address: tx?.erc20_transfers[0].address,
+                    pairAddress: tx?.erc20_transfers[0].to_address,
+                };
+                bought = {
+                    symbol: tradeSymbol,
+                    amount: amountOut
+                };
+            }
+
+            swapsArray.push({
+                transactionType,
+                blockTimestamp: tx.block_timestamp,
+                transactionHash: tx.hash,
+                from: tx.from_address,
+                to: tx.to_address,
+                bought,
+                sold,
+            });
+
+        } else {
+            const transfer = tx.erc20_transfers[0];
+            transfersArray.push({
+                transactionHash: tx.hash,
+                tokenSymbol: transfer.token_symbol,
+                blockTimestamp: tx.block_timestamp,
+                value: tx.value,
+                contract: transfer.address,
+                from: tx.from_address,
+                to: tx.to_address,
+            });
         }
     }
 
-    return {lostSwaps: swapsArray, transfers: transfersArray, mismatchedContracts};
-}
+    return {
+        lostSwaps: swapsArray,
+        transfers: transfersArray,
+        mismatchedContracts,
+    };
+};
 
 module.exports = {checkTransactionHistory};
