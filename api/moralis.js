@@ -118,7 +118,7 @@ const getPairStats = async (txHash, chain) => {
         const response = await api.get(url);
         return response.data;
     } catch (error) {
-        console.error(`Failed to get ${txHash}:`, error.message);
+        console.error(`Error fetching pair data ${txHash}:`, error.message);
         return null;
     }
 };

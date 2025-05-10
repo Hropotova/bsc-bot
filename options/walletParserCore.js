@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 
 const {
-    getWalletTokenSwaps,
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
@@ -44,9 +43,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     // Get native token price in USD
                     const bnbPrice = await getTokenPrice(cfg.contract, cfg.chain);
 
-                    // Get all swap related transactions (buy, sell).
-                    const swaps = await getWalletTokenSwaps(address, cfg.chain);
-
                     // Get the full transaction history of a specified wallet address.
                     const transactionsHistory = await getWalletHistory(address, cfg.chain);
 
@@ -55,25 +51,16 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     // Get lost swaps and transfers.
                     const {
-                        lostSwaps,
+                        swaps,
                         transfers,
                         mismatchedContracts
-                    } = await checkTransactionHistory(address, swaps, transactionsHistory, cfg.symbol, cfg.trade_symbol, cfg.chain);
+                    } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, cfg.chain);
 
                     // Compare the swaps with the lost swaps.
-                    const allSwaps = [...swaps, ...lostSwaps];
 
                     const tokenData = {};
 
-                    const seen = new Set();
-                    const uniqueSwaps = [];
-                    for (const swap of allSwaps) {
-                        if (seen.has(swap.transactionHash)) continue;
-                        seen.add(swap.transactionHash);
-                        uniqueSwaps.push(swap);
-                    }
-
-                    for (const swap of uniqueSwaps) {
+                    for (const swap of swaps) {
                         const {bought, sold, transactionType} = swap;
                         if (!bought || !sold) continue;
 
@@ -83,7 +70,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const soldAddress = sold.address;
 
                         // Handle BUY transactions.
-                        if (transactionType === 'buy') {
+                        if (transactionType === 'buy' && boughtAddress) {
                             const token = boughtAddress.toLowerCase();
 
                             if (!tokenData[token]) {
@@ -102,7 +89,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         // Handle SELL transactions.
-                        if (transactionType === 'sell') {
+                        if (transactionType === 'sell' && soldAddress) {
                             const token = soldAddress.toLowerCase();
 
                             if (!tokenData[token]) {
