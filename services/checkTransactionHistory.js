@@ -78,7 +78,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-
+    console.log('swapsArray', swapsArray)
     return {
         swaps: swapsArray,
         transfers: transfersArray,
