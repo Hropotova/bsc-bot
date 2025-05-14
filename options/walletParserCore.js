@@ -3,7 +3,6 @@ const fs = require('fs');
 const path = require('path');
 
 const {
-    getWalletTokenSwaps,
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
@@ -44,9 +43,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     // Get native token price in USD
                     const bnbPrice = await getTokenPrice(cfg.contract, cfg.chain);
 
-                    // Get all swap related transactions (buy, sell).
-                    const swaps = await getWalletTokenSwaps(address, cfg.chain);
-
                     // Get the full transaction history of a specified wallet address.
                     const transactionsHistory = await getWalletHistory(address, cfg.chain);
 
@@ -55,46 +51,17 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     // Get lost swaps and transfers.
                     const {
-                        lostSwaps,
+                        swaps,
                         transfers,
                         mismatchedContracts
-                    } = await checkTransactionHistory(address, swaps, transactionsHistory, cfg.symbol, cfg.trade_symbol, cfg.chain);
+                    } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice);
 
                     // Compare the swaps with the lost swaps.
-                    const allSwaps = [...swaps, ...lostSwaps];
-                    const targetHashes = [
-                        '0x35d20a0b902e447ffc7a1b6f719d1649a02a63443152035c9594241f9fc97141',
-                        '0x2b41f1b6dd796debfb02e270ca4f31a24520d9bc2890340bb849fcffff3a198c',
-                        '0x34362a60ec2f27c4757ec58c61504ac7d98934f810666d0cc74beb980e471206',
-                        '0x7fdd615a5792ac644f89ed263d0a1feeb450f828b1ed83d091dec7f590099483',
-                        '0x3f88ceefab6457235fa09ed5df096ca4e01fab8025062804d202fcee67a31ed4',
-                        '0xcbbdcd2111b08b447ecd0d849303f28d07fed3de33e722e88c633060d5c1147c',
-                        '0x5c84669a0d9fe416989eafda33c80181740a1145f74f95929283a010a4874c93',
-                        '0xeb8a75cd138263730ce2e0fc978847a3134299c06846aebcc34169b7d399098d',
-                        '0x93e4550bdcf6e946e4b9a61aa9beb3db482c25fb72d3e3ff886464508cae69ae',
-                    ];
 
-                    const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
-
-                    const matchingTransactions = allSwaps.filter(tx =>
-                        hashSet.has(tx.transactionHash.toLowerCase())
-                    );
-
-                    matchingTransactions.forEach(tx => {
-                        // console.log(tx)
-                    })
                     const tokenData = {};
 
-                    const seen = new Set();
-                    const uniqueSwaps = [];
-                    for (const swap of allSwaps) {
-                        if (seen.has(swap.transactionHash)) continue;
-                        seen.add(swap.transactionHash);
-                        uniqueSwaps.push(swap);
-                    }
-
-                    for (const swap of allSwaps) {
-                        const {bought, sold, transactionType, transactionHash} = swap;
+                    for (const swap of swaps) {
+                        const {bought, sold, transactionType} = swap;
                         if (!bought || !sold) continue;
 
                         const boughtSymbol = bought.symbol;
@@ -103,7 +70,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const soldAddress = sold.address;
 
                         // Handle BUY transactions.
-                        if (transactionType === 'buy' && soldAddress && soldAddress.toLowerCase() === cfg.contract.toLowerCase()) {
+                        if (transactionType === 'buy' && boughtAddress) {
                             const token = boughtAddress.toLowerCase();
 
                             if (!tokenData[token]) {
@@ -122,7 +89,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         // Handle SELL transactions.
-                        if (transactionType === 'sell' && boughtAddress && boughtAddress.toLowerCase() === cfg.contract.toLowerCase()) {
+                        if (transactionType === 'sell' && soldAddress) {
                             const token = soldAddress.toLowerCase();
 
                             if (!tokenData[token]) {
