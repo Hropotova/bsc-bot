@@ -54,7 +54,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         swaps,
                         transfers,
                         mismatchedContracts
-                    } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, cfg.chain);
+                    } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice);
 
                     // Compare the swaps with the lost swaps.
 
