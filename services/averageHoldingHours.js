@@ -22,7 +22,7 @@ const averageHoldingHours = (trades) => {
 
     const totalHoldingHours = holdingPeriods.reduce((sum, hours) => sum + hours, 0);
 
-    const avgHoldingHours = (totalHoldingHours / holdingPeriods.length).toFixed(2);
+    const avgHoldingHours = Number((totalHoldingHours / holdingPeriods.length).toFixed(2));
 
     return avgHoldingHours;
 }

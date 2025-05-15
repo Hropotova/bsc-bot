@@ -140,6 +140,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         active_chains: chains,
                         roi_pct: '',
                         average_pnl: '',
+                        median_holding_hours: '',
                         first_transaction: {
                             timestamp: firstTransaction?.block_timestamp,
                             hash: firstTransaction?.hash,
@@ -210,6 +211,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         });
 
                         const avgHoldingHours = averageHoldingHours(stats.trades);
+                        const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
 
                         addressData.traded_tokens[contract] = {
                             symbol: stats.symbol,
@@ -227,7 +229,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 inflow_count: inflowCount,
                                 outflow_count: outflowCount,
                             },
-                            launch_time_first_buy: diffMinutes,
+                            minutes_after_launch_to_buy: diffMinutes,
+                            early_entry: earlyEntry,
                             trades: {
                                 buy_count: buyCount,
                                 sell_count: sellCount,
