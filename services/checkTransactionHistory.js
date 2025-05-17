@@ -11,7 +11,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
         mismatchedTransfers.map(tx => tx?.erc20_transfers[0].address.toLowerCase())
     ));
 
-    const swapRegex = /^Swapped\s+(?:(\d[\d.,]*)\s+)?(.+?)\s+for\s+(\d[\d.,]*)\s+(.+)$/;
+    const swapRegex = /^Swapped\s+(?:(\d[\d.,]*|NaN)\s+)?(.+?)\s+for\s+(\d[\d.,]*|NaN)\s+(.+)$/;
 
     for (const tx of transactions) {
 
