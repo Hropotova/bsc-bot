@@ -11,14 +11,15 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
         mismatchedTransfers.map(tx => tx?.erc20_transfers[0].address.toLowerCase())
     ));
 
-    const swapRegex = /^Swapped\s+(?:(\d[\d.,]+)\s+)?(.+?)\s+for\s+(\d[\d.,]+)\s+(.+)$/;
+    const swapRegex = /^Swapped\s+(?:(\d[\d.,]*)\s+)?(.+?)\s+for\s+(\d[\d.,]*)\s+(.+)$/;
 
     for (const tx of transactions) {
 
         if (tx.category === 'token swap') {
             const summary = tx.summary || '';
             const match = summary.match(swapRegex);
-
+            console.log('match', match)
+            console.log('tx', tx.hash)
             if (!match) {
                 console.warn('Невідомий формат summary:', summary);
                 continue;
