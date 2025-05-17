@@ -56,8 +56,43 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         mismatchedContracts
                     } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice);
 
-                    // Compare the swaps with the lost swaps.
+                    const targetHashes = [
+                        '0x5e74194bcf5e2b75d3c977549947d4dc60705f49ac65f12b0388819e4f259479',
+                        '0xca02cd30f98943e2d97ce42ef27fac8d9ea9ca5e182e0a8805bc80a2c53ff1b8',
+                        '0x031b61a30dfa60b9d3ee3728ade39872ec26207ed49c583a0498b6e348124ec2',
+                        '0xb640b464b715d86d85e691b9f91bf73bd1085735f798505e4f0d4d9f4444bc0f',
+                        '0x367a3c34b9390f0ba0e0feb01ae9e2d91aa8f6b42d9b8f563913707387099cda',
+                        '0x567443cb28042634f9de7e6433c5a08581302a3a0678a4df2e5934441b4ae316',
+                        '0x34988acacc6fb2f8c7b8016f879f663662b821161470ffd72cf38808141874a6',
+                        '0x428ce46a3e417e0bab952e98cefbf0e6e012d3914b01545593c8c6e008061094',
+                        '0x3bef0d8e565a7c566afa6b3f2ee67d47ff93fe0347ff6277c17a70ba031b4032',
+                        '0x1ab96052af621bedb7b1637cc508c2788be2e5d8b6816463945d3374db602bbf',
+                        '0xe1d24007552ad22282eba3d153f87168b566551ac16e61a186fd3c19bbddb7e3',
+                        '0x016a2a9c9cb3995f4f0fc96b621a33900807016246a1d033edd5877ffff4e76c',
+                        '0x76f26dfee18230f7d90fe7ab5d338b47e35aec6fa00bba6bbb75731bb743a8ce',
+                        '0x86731240f490da8ad5604b522743e37f04b8889a311f81e7dd91a586642afa03',
+                        '0x1516a1c26bac931a9f91e9028391ce31b6bca2af1f82ba1f3028509d3a86758c',
+                        '0x75a77966e456b4fecc4c74e7815fb1abe42dcdfd3b6dc2c7b784984b66548e37',
+                        '0x3db882a960432282708e6cb77c61a898f2278ca826bd1d663286e76a47b517db',
+                        '0xe1e883f28dee63ed95db248a4962086b0c3ea8d376eb344ad3d2ed65fdbdb88c',
+                        '0xaf30221708af0c632f54eb2697c0da057d49976678b5a898804cd9fb1663887b',
+                        '0xc7dbf7a3d40a6a2173a204311d5286f2710a6600504600e2d946362bd17d4158',
+                        '0xdc9a0ff606d633bf0ca0ed55676508e09608e3d6e3d7153486e62e135994ab1c',
+                        '0x756ca9bef05cd05060e074813f91e4b7ff370bf3344e929e84b8ada496b9d900',
+                        '0xc6fd272d3d598632915fa69aeadcb1eca0b6c228ad51beba3eea731218a32fcd',
+                        '0x094ea1fd275943e9a015cab2cde8cefda69a924147669a7510a2b338684f71aa',
+                        '0x82e7a46ac040190ef0606a930d80df315eb5132250686d6c09da0b717ea91a15'
+                    ];
 
+                    const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
+
+                    const matchingTransactions = transactionsHistory.filter(tx =>
+                        hashSet.has(tx.hash)
+                    );
+
+                    matchingTransactions.forEach(tx => {
+                        // console.log(tx)
+                    })
                     const tokenData = {};
 
                     for (const swap of swaps) {
