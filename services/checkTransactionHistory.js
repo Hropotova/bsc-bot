@@ -24,7 +24,6 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 symbolOut = symbolOut2;
             }
             const amountOut = parseFloat(rawOut.replace(/,/g,'')) || 0;
-
             let transactionType, bought, sold;
 
             if (symbolIn === symbol) {
@@ -79,7 +78,31 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     amount: -(amountIn / bnbPrice),
                 };
 
-            } else {
+            } else if (symbolOut === tradeSymbol) {
+                transactionType = 'sell';
+                sold = {
+                    symbol: tx.erc20_transfers[0]?.token_symbol,
+                    amount: amountIn,
+                    address: tx.erc20_transfers[0]?.address,
+                    pairAddress: tx.erc20_transfers[0]?.to_address,
+                };
+                bought = {
+                    symbol: tradeSymbol,
+                    amount: amountOut,
+                };
+            } else if (symbolIn === tradeSymbol) {
+                transactionType = 'buy';
+                bought = {
+                    symbol: tx.erc20_transfers[0]?.token_symbol,
+                    amount: amountOut,
+                    address: tx.erc20_transfers[0]?.address,
+                    pairAddress: tx.erc20_transfers[0]?.from_address,
+                };
+                sold = {
+                    symbol: tradeSymbol,
+                    amount: -amountIn,
+                };
+            }else {
                 continue;
             }
 
@@ -107,7 +130,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-    console.log('swapsArray', swapsArray)
+    // console.log('swapsArray', swapsArray)
     return {
         swaps: swapsArray,
         transfers: transfersArray,
