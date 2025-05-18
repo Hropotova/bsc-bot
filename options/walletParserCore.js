@@ -45,6 +45,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     // Get the full transaction history of a specified wallet address.
                     const transactionsHistory = await getWalletHistory(address, cfg.chain);
+                    transactionsHistory.forEach(i => {
+                        console.log(i.hash);
+                    });
 
                     // Get token balances for a specific wallet address.
                     const balances = await getWalletTokenBalances(address, cfg.chain);

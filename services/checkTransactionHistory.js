@@ -11,23 +11,19 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
         mismatchedTransfers.map(tx => tx?.erc20_transfers[0].address.toLowerCase())
     ));
 
-    const swapRegex = /^Swapped\s+(?:(\d[\d.,]*|NaN)\s+)?(.+?)\s+for\s+(\d[\d.,]*|NaN)\s+(.+)$/;
-
+    const swapRegex = /^Swapped\s+(?:(\d[\d.,]*|NaN)\s+)?(.+?)\s+for\s+(\d[\d.,]*|NaN)\s+(.+?)(?:\s+and\s+(\d[\d.,]*|NaN)\s+(.+))?$/;
     for (const tx of transactions) {
-
         if (tx.category === 'token swap') {
-            const summary = tx.summary || '';
-            const match = summary.match(swapRegex);
-            console.log('match', match)
-            console.log('tx', tx.hash)
-            if (!match) {
-                console.warn('Невідомий формат summary:', summary);
-                continue;
+            const m = tx.summary.match(swapRegex);
+            if (!m) continue;
+            const [, rawIn='0', symbolIn, rawOut1='0', symbolOut1, rawOut2='0', symbolOut2] = m;
+            const amountIn = parseFloat(rawIn.replace(/,/g,'')) || 0;
+            let rawOut = rawOut1, symbolOut = symbolOut1;
+            if (symbolOut2 === 'BNB') {
+                rawOut = rawOut2;
+                symbolOut = symbolOut2;
             }
-
-            const [, rawIn = '0', symbolIn, rawOut = '0', symbolOut] = match;
-            const amountIn = parseFloat(rawIn.replace(/,/g, ''));
-            const amountOut = parseFloat(rawOut.replace(/,/g, ''));
+            const amountOut = parseFloat(rawOut.replace(/,/g,'')) || 0;
 
             let transactionType, bought, sold;
 
