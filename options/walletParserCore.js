@@ -53,13 +53,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     const {
                         swaps,
                         transfers,
-                        mismatchedContracts
                     } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice);
 
                     const targetHashes = [
-                        '0x728ebd490d4769cb6944d53e0728b1a0f60be267351a7a0875b4ee7d20ad1e30',
-                        '0xc20dc17d0840bf81bd92fe6fed7ad27772d8365584edb83da5f9a3f261b6e482',
-                        '0xc60b46ebe74694d0dd1d5629802978cc3024afecdc261ccfd1bee73323526fc6',
+                        '0xa85b5097bd1f4e82f658155c1e7fb694ec35975bf807244664a4789a8a54b6de',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
@@ -70,7 +67,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     matchingTransactions.forEach(tx => {
                         // console.log(tx)
-                    })
+                    });
+
                     const tokenData = {};
 
                     for (const swap of swaps) {
@@ -130,8 +128,23 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
                     }
 
+                    // Remove tokens with no inflow and no trades.
+                    for (const [contract, stats] of Object.entries(tokenData)) {
+                        const inflowCount = transfers.filter(
+                            t => t.category === 'receive' || t.category === 'token receive'
+                        ).length;
+
+                        const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
+                        const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
+
+                        if (inflowCount > 0  && buyCount === 0 && sellCount === 0) {
+                            delete tokenData[contract];
+                        }
+                    }
+
+
                     // Filter traded tokens.
-                    for (const token of [...cfg.contracts, ...mismatchedContracts]) {
+                    for (const token of cfg.contracts) {
                         const lowerToken = token.toLowerCase();
                         if (tokenData[lowerToken]) {
                             delete tokenData[lowerToken];
@@ -218,10 +231,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         tokenTransfers.forEach(transfer => {
-                            if (transfer.from.toLowerCase() === address.toLowerCase()) {
+
+                            if (transfer.category === 'send' || transfer.category === 'token send') {
                                 outflowCount++;
                             }
-                            if (transfer.to.toLowerCase() === address.toLowerCase()) {
+                            if (transfer.category === 'receive' || transfer.category === 'token receive') {
                                 inflowCount++;
                             }
                         });

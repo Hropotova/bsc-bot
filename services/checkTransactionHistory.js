@@ -2,15 +2,6 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
     const swapsArray = [];
     const transfersArray = [];
 
-    const mismatchedTransfers = transactions.filter(tx =>
-        tx?.from_address.toLowerCase() !== address.toLowerCase() &&
-        Array.isArray(tx?.erc20_transfers) &&
-        tx?.erc20_transfers.length > 0
-    );
-    const mismatchedContracts = Array.from(new Set(
-        mismatchedTransfers.map(tx => tx?.erc20_transfers[0].address.toLowerCase())
-    ));
-
     const swapRegex = /^Swapped\s+(?:(\d[\d.,]*|NaN)\s+)?(.+?)\s+for\s+(\d[\d.,]*|NaN)\s+(.+?)(?:\s+and\s+(\d[\d.,]*|NaN)\s+(.+))?$/;
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
@@ -119,6 +110,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 from: tx.from_address,
                 to: tx.to_address,
                 summary: tx.summary,
+                category: tx.category,
                 bought,
                 sold,
             });
@@ -131,6 +123,8 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 blockTimestamp: tx.block_timestamp,
                 value: tx.value,
                 contract: transfer?.address,
+                summary: tx.summary,
+                category: tx.category,
                 from: tx.from_address,
                 to: tx.to_address,
             });
@@ -140,7 +134,6 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
     return {
         swaps: swapsArray,
         transfers: transfersArray,
-        mismatchedContracts,
     };
 };
 
