@@ -75,13 +75,13 @@ const getTokenPrice = async (token, chain) => {
 };
 
 // Get the pair stats by using pair address.
-const getPairStats = async (txHash, chain) => {
-    const url = `pairs/${txHash}/stats?chain=${chain}`;
+const getPairStats = async (address, chain) => {
+    const url = `pairs/${address}/stats?chain=${chain}`;
     try {
         const response = await api.get(url);
         return response.data;
     } catch (error) {
-        console.error(`Error fetching pair data ${txHash}:`, error.message);
+        console.error(`Error fetching pair data ${address}:`, error.message);
         return null;
     }
 };

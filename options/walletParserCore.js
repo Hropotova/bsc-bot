@@ -91,7 +91,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     spent: 0,
                                     received: 0,
                                     contractAddress: boughtAddress,
-                                    pairAddress: swap.pairAddress,
+                                    pairAddress: bought.pairAddress,
                                     symbol: boughtSymbol,
                                     balance: 0,
                                     trades: []
@@ -110,7 +110,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     spent: 0,
                                     received: 0,
                                     contractAddress: soldAddress,
-                                    pairAddress: swap.pairAddress,
+                                    pairAddress: sold.pairAddress,
                                     symbol: soldSymbol,
                                     balance: 0,
                                     trades: [],
@@ -180,6 +180,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         let inflowCount = 0;
                         let outflowCount = 0;
                         let diffMinutes = null
+
                         const pairStat = await getPairStats(stats.pairAddress, cfg.chain);
 
                         if (Array.isArray(stats.trades) && stats.trades.length > 0) {
@@ -187,8 +188,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 (a, b) => new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
                             );
                             const firstTrade = sortedTrades[0];
+
                             const createdTime = new Date(pairStat?.pairCreated);
                             const firstBuyTime = new Date(firstTrade.blockTimestamp);
+
                             diffMinutes = Math.round((firstBuyTime - createdTime) / (1000 * 60));
                         }
 

@@ -35,6 +35,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers[0]?.from_address,
                 };
                 sold = {
+                    pairAddress: tx.erc20_transfers[0]?.from_address,
                     symbol: tradeSymbol,
                     amount: -amountIn,
                 };
@@ -48,6 +49,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers[0]?.to_address,
                 };
                 bought = {
+                    pairAddress: tx.erc20_transfers[0]?.to_address,
                     symbol: tradeSymbol,
                     amount: amountOut
                 };
@@ -61,6 +63,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                 };
                 bought = {
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.to_address,
                     symbol: tradeSymbol,
                     amount: amountOut / bnbPrice
                 };
@@ -74,6 +77,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.from_address,
                 };
                 sold = {
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.from_address,
                     symbol: tradeSymbol,
                     amount: -(amountIn / bnbPrice),
                 };
@@ -87,6 +91,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers[0]?.to_address,
                 };
                 bought = {
+                    pairAddress: tx.erc20_transfers[0]?.to_address,
                     symbol: tradeSymbol,
                     amount: amountOut,
                 };
@@ -99,6 +104,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers[0]?.from_address,
                 };
                 sold = {
+                    pairAddress: tx.erc20_transfers[0]?.from_address,
                     symbol: tradeSymbol,
                     amount: -amountIn,
                 };
@@ -117,7 +123,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 sold,
             });
 
-        } else {
+        } else if (tx.category === 'send' || tx.category === 'receive' || tx.category === 'token send' || tx.category === 'token receive') {
             const transfer = tx.erc20_transfers[0];
             transfersArray.push({
                 transactionHash: tx.hash,
@@ -130,7 +136,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-    // console.log('swapsArray', swapsArray)
+
     return {
         swaps: swapsArray,
         transfers: transfersArray,
