@@ -56,7 +56,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice);
 
                     const targetHashes = [
-                        '0xa85b5097bd1f4e82f658155c1e7fb694ec35975bf807244664a4789a8a54b6de',
+                        '0x5d1b03911fecb1940b687ddd5d8e4cc3eb010123a6087601018e0c7d49c43f8e',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
@@ -66,7 +66,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        // console.log(tx)
+                        console.log(tx)
                     });
 
                     const tokenData = {};
@@ -265,7 +265,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 buy_count: buyCount,
                                 sell_count: sellCount,
                             },
-                            ...(stats.spent === 0 && {
+                            ...((buyCount > 0 && stats.received === 0 && stats.balance === 0 && outflowCount === 0) && {
                                 note: 'excluded from ROI/accuracy due to zero cost basis'
                             })
                         };

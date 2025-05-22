@@ -63,9 +63,10 @@ const getActiveWalletChains = async (address, chains = ['eth', 'bsc', 'base']) =
 };
 
 // Get the token price denominated in the blockchain's native token and USD.
-const getTokenPrice = async (token, chain) => {
+const getTokenPrice = async (token, chain, block) => {
     try {
-        const url = `erc20/${token}/price?chain=${chain}`;
+        const url = `erc20/${token}/price?chain=${chain}${block ? `&to_block=${block}`: ''}`;
+
         const response = await api.get(url);
         return response.data;
     } catch (error) {

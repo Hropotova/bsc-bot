@@ -7,14 +7,14 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
         if (tx.category === 'token swap') {
             const m = tx.summary.match(swapRegex);
             if (!m) continue;
-            const [, rawIn='0', symbolIn, rawOut1='0', symbolOut1, rawOut2='0', symbolOut2] = m;
-            const amountIn = parseFloat(rawIn.replace(/,/g,'')) || 0;
+            const [, rawIn = '0', symbolIn, rawOut1 = '0', symbolOut1, rawOut2 = '0', symbolOut2] = m;
+            const amountIn = parseFloat(rawIn.replace(/,/g, '')) || 0;
             let rawOut = rawOut1, symbolOut = symbolOut1;
             if (symbolOut2 === 'BNB') {
                 rawOut = rawOut2;
                 symbolOut = symbolOut2;
             }
-            const amountOut = parseFloat(rawOut.replace(/,/g,'')) || 0;
+            const amountOut = parseFloat(rawOut.replace(/,/g, '')) || 0;
             let transactionType, bought, sold;
 
             if (symbolIn === symbol) {
@@ -22,11 +22,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 bought = {
                     symbol: tx.erc20_transfers[0]?.token_symbol,
                     amount: amountOut,
-                    address: tx.erc20_transfers[0]?.address,
-                    pairAddress: tx.erc20_transfers[0]?.from_address,
+                    address: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.from_address,
                 };
                 sold = {
-                    pairAddress: tx.erc20_transfers[0]?.from_address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.from_address,
                     symbol: tradeSymbol,
                     amount: -amountIn,
                 };
@@ -36,11 +36,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 sold = {
                     symbol: tx.erc20_transfers[0]?.token_symbol,
                     amount: amountIn,
-                    address: tx.erc20_transfers[0]?.address,
-                    pairAddress: tx.erc20_transfers[0]?.to_address,
+                    address: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                 };
                 bought = {
-                    pairAddress: tx.erc20_transfers[0]?.to_address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                     symbol: tradeSymbol,
                     amount: amountOut
                 };
@@ -54,7 +54,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                 };
                 bought = {
-                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.to_address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                     symbol: tradeSymbol,
                     amount: amountOut / bnbPrice
                 };
@@ -78,11 +78,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 sold = {
                     symbol: tx.erc20_transfers[0]?.token_symbol,
                     amount: amountIn,
-                    address: tx.erc20_transfers[0]?.address,
-                    pairAddress: tx.erc20_transfers[0]?.to_address,
+                    address: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                 };
                 bought = {
-                    pairAddress: tx.erc20_transfers[0]?.to_address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolIn)[0]?.to_address,
                     symbol: tradeSymbol,
                     amount: amountOut,
                 };
@@ -91,15 +91,15 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 bought = {
                     symbol: tx.erc20_transfers[0]?.token_symbol,
                     amount: amountOut,
-                    address: tx.erc20_transfers[0]?.address,
-                    pairAddress: tx.erc20_transfers[0]?.from_address,
+                    address: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.from_address,
                 };
                 sold = {
-                    pairAddress: tx.erc20_transfers[0]?.from_address,
+                    pairAddress: tx.erc20_transfers.filter(i => i.token_symbol === symbolOut)[0]?.from_address,
                     symbol: tradeSymbol,
                     amount: -amountIn,
                 };
-            }else {
+            } else {
                 continue;
             }
 
@@ -130,7 +130,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-
+    console.log('swapsArray', swapsArray)
     return {
         swaps: swapsArray,
         transfers: transfersArray,
