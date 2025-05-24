@@ -43,7 +43,7 @@ bot.on('callback_query', async ({message, data}) => {
     }
 });
 
-bot.on('message', async msg => {
+bot.on('text', async msg => {
     const chatId = msg.chat.id;
     const text = msg.text.trim();
 
