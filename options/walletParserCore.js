@@ -56,11 +56,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice, cfg.chain);
 
                     const targetHashes = [
-                        '0xb1127df9e4158852fe723a9769c56eebe7478154734c6956113fef400f32772a',
+                        '0xcf627a34d47ebed886b9d9fb114a4ed39e8b29e36f8a9ae03b9e083a5787bb4d',
                         '0x9104cd0aee21bb9ea9f79cec98a149eb89ba664fc42d7589a8d8b7ed6acd628c',
                         '0x385de9a1994e7048deeb4d14accbf9bd500357208cfc27292d7b4636d778d8ec',
                         '0x2501d99842eeafeb35dc57ead0a691bd48daaeed2a46427ccd4ff7bd76f3216e',
-                        '0xcf627a34d47ebed886b9d9fb114a4ed39e8b29e36f8a9ae03b9e083a5787bb4d',
+                        '0xb1127df9e4158852fe723a9769c56eebe7478154734c6956113fef400f32772a',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
@@ -70,7 +70,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        // console.log(tx)
+                        console.log(tx)
                     });
 
                     const tokenData = {};

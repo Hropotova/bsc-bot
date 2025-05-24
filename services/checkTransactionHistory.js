@@ -141,34 +141,68 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 ![symbol, tradeSymbol, 'USDT'].includes(fromTransfers[0].token_symbol) &&
                 ![symbol, tradeSymbol, 'USDT'].includes(toTransfers[0].token_symbol)
             ) {
-                const symbolOut = toTransfers[0].token_symbol;
+                const symbolIn = fromTransfers[0].token_symbol;
+                const symbolOut = toTransfers  [0].token_symbol;
+                const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
 
+                const priceIn = await getTokenPrice(fromTransfers[0].address, chain, tx.block_number);
                 const priceOut = await getTokenPrice(toTransfers[0].address, chain, tx.block_number);
 
-                const sold = {
-                    symbol: tradeSymbol,
-                    amount: -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
-                    pairAddress: toTransfers[0].from_address
-                };
-                const bought = {
-                    symbol: symbolOut,
-                    amount: amountOut,
-                    address: toTransfers[0].address,
-                    pairAddress: toTransfers[0].from_address
-                };
+                const isSell = fromTransfers[0].direction === 'send';
+                const isBuy = toTransfers  [0].direction === 'receive';
 
-                swapsArray.push({
-                    transactionType: 'buy',
-                    blockTimestamp: tx.block_timestamp,
-                    transactionHash: tx.hash,
-                    from: tx.from_address,
-                    to: tx.to_address,
-                    summary: tx.summary,
-                    category: tx.category,
-                    bought,
-                    sold
-                });
+                if (isBuy) {
+                    const sold = {
+                        symbol: tradeSymbol,
+                        amount: -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
+                        pairAddress: toTransfers[0].from_address
+                    };
+                    const bought = {
+                        symbol: symbolOut,
+                        amount: amountOut,
+                        address: toTransfers[0].address,
+                        pairAddress: toTransfers[0].from_address
+                    };
+
+                    swapsArray.push({
+                        transactionType: 'buy',
+                        blockTimestamp: tx.block_timestamp,
+                        transactionHash: tx.hash,
+                        from: tx.from_address,
+                        to: tx.to_address,
+                        summary: tx.summary,
+                        category: tx.category,
+                        bought,
+                        sold
+                    });
+                }
+
+                if (isSell) {
+                    const sold = {
+                        symbol: symbolIn,
+                        amount: amountIn,
+                        address: toTransfers[0].address,
+                        pairAddress: toTransfers[0].to_address
+                    };
+                    const bought = {
+                        symbol: tradeSymbol,
+                        amount: ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
+                        pairAddress: toTransfers[0].to_address
+                    };
+
+                    swapsArray.push({
+                        transactionType: 'sell',
+                        blockTimestamp: tx.block_timestamp,
+                        transactionHash: tx.hash,
+                        from: tx.from_address,
+                        to: tx.to_address,
+                        summary: tx.summary,
+                        category: tx.category,
+                        bought,
+                        sold
+                    });
+                }
                 continue;
             }
 
