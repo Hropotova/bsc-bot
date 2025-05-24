@@ -138,14 +138,14 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                         const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
-                        if (inflowCount > 0  && buyCount === 0 && sellCount === 0) {
+                        if (inflowCount > 0 && buyCount === 0 && sellCount === 0) {
                             delete tokenData[contract];
                         }
                     }
 
 
                     // Filter traded tokens.
-                    for (const token of cfg.contracts) {
+                    for (const token of [...cfg.contracts, address]) {
                         const lowerToken = token.toLowerCase();
                         if (tokenData[lowerToken]) {
                             delete tokenData[lowerToken];
