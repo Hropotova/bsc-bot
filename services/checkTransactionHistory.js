@@ -1,4 +1,6 @@
-const checkTransactionHistory = async (address, transactions, symbol, tradeSymbol, nativeTokenPrice) => {
+const {getTokenPrice} = require('../api/moralis');
+
+const checkTransactionHistory = async (address, transactions, symbol, tradeSymbol, nativeTokenPrice, chain) => {
     const swapsArray = [];
 
 
@@ -6,7 +8,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
 
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
-            const { erc20_transfers = [], native_transfers = [] } = tx;
+            const {erc20_transfers = [], native_transfers = []} = tx;
 
             const fromTransfers = erc20_transfers.filter(t => t.from_address.toLowerCase() === address.toLowerCase());
             const toTransfers = erc20_transfers.filter(t => t.to_address.toLowerCase() === address.toLowerCase());
@@ -20,8 +22,8 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 const amountInRaw = parseFloat(nativeSend.value_formatted || '0');
 
                 let transactionType = 'buy';
-                let soldSymbol = 'ETH';
-                if (['WETH', 'WBNB'].includes(tradeSymbol)) soldSymbol = tradeSymbol;
+                let soldSymbol = symbol;
+
                 if (symbolOut === 'USDT') {
                     transactionType = 'sell';
                     swapsArray.push({
@@ -78,8 +80,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 const amountOutRaw = parseFloat(nativeReceive.value_formatted || '0');
 
                 let transactionType = 'sell';
-                let boughtSymbol = 'ETH';
-                if (['WETH', 'WBNB'].includes(tradeSymbol)) boughtSymbol = tradeSymbol;
+
                 if (symbolIn === 'USDT') {
                     transactionType = 'buy';
                     swapsArray.push({
@@ -106,7 +107,9 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     continue;
                 }
 
-                if (symbolIn === tradeSymbol) transactionType = 'buy';
+                if (symbolIn === tradeSymbol) {
+                    transactionType = 'buy';
+                }
 
                 swapsArray.push({
                     transactionType,
@@ -117,7 +120,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     summary: tx.summary,
                     category: tx.category,
                     bought: {
-                        symbol: boughtSymbol,
+                        symbol: tradeSymbol,
                         amount: amountOutRaw,
                         address: nativeReceive.to_address,
                         pairAddress: fromTransfers[0].to_address
@@ -128,6 +131,43 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                         address: fromTransfers[0].address,
                         pairAddress: fromTransfers[0].to_address
                     }
+                });
+                continue;
+            }
+
+            if (
+                fromTransfers.length &&
+                toTransfers.length &&
+                ![symbol, tradeSymbol, 'USDT'].includes(fromTransfers[0].token_symbol) &&
+                ![symbol, tradeSymbol, 'USDT'].includes(toTransfers[0].token_symbol)
+            ) {
+                const symbolOut = toTransfers[0].token_symbol;
+                const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+
+                const priceOut = await getTokenPrice(toTransfers[0].address, chain, tx.block_number);
+
+                const sold = {
+                    symbol: tradeSymbol,
+                    amount: -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
+                    pairAddress: toTransfers[0].from_address
+                };
+                const bought = {
+                    symbol: symbolOut,
+                    amount: amountOut,
+                    address: toTransfers[0].address,
+                    pairAddress: toTransfers[0].from_address
+                };
+
+                swapsArray.push({
+                    transactionType: 'buy',
+                    blockTimestamp: tx.block_timestamp,
+                    transactionHash: tx.hash,
+                    from: tx.from_address,
+                    to: tx.to_address,
+                    summary: tx.summary,
+                    category: tx.category,
+                    bought,
+                    sold
                 });
                 continue;
             }
@@ -225,6 +265,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 continue;
             }
 
+
             swapsArray.push({
                 transactionType,
                 blockTimestamp: tx.block_timestamp,
@@ -236,8 +277,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 bought,
                 sold
             });
-        }
-        else if (tx.category === 'send' || tx.category === 'receive' || tx.category === 'token send' || tx.category === 'token receive') {
+        } else if (tx.category === 'send' || tx.category === 'receive' || tx.category === 'token send' || tx.category === 'token receive') {
             const transfer = tx.erc20_transfers[0];
             transfersArray.push({
                 transactionHash: tx.hash,
@@ -252,8 +292,6 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-
-    console.log('swapsArray', swapsArray)
 
     return {
         swaps: swapsArray,
