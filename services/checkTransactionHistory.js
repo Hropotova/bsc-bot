@@ -1,4 +1,4 @@
-const checkTransactionHistory = async (address, transactions, symbol, tradeSymbol, bnbPrice) => {
+const checkTransactionHistory = async (address, transactions, symbol, tradeSymbol, nativeTokenPrice) => {
     const swapsArray = [];
 
     const transfersArray = [];
@@ -24,13 +24,37 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
 
             if (!fromTransfers.length && toTransfers.length && nativeSend) {
                 const symbolOut = toTransfers[0].token_symbol;
-                const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
-                const amountIn = parseFloat(nativeSend.value_formatted || '0');
+                const amountOutRaw = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+                const amountInRaw = parseFloat(nativeSend.value_formatted || '0');
 
                 let transactionType = 'buy';
                 let soldSymbol = 'ETH';
                 if (['WETH', 'WBNB'].includes(tradeSymbol)) soldSymbol = tradeSymbol;
-                if (symbolOut === 'USDT') transactionType = 'sell';
+                if (symbolOut === 'USDT') {
+                    transactionType = 'sell';
+                    swapsArray.push({
+                        transactionType,
+                        blockTimestamp: tx.block_timestamp,
+                        transactionHash: tx.hash,
+                        from: tx.from_address,
+                        to: tx.to_address,
+                        summary: tx.summary,
+                        category: tx.category,
+                        bought: {
+                            symbol: tradeSymbol,
+                            amount: amountOutRaw / nativeTokenPrice,
+                            address: toTransfers[0].address,
+                            pairAddress: toTransfers[0].from_address
+                        },
+                        sold: {
+                            symbol: 'USDT',
+                            amount: -amountInRaw,
+                            pairAddress: toTransfers[0].from_address
+                        }
+                    });
+                    continue;
+                }
+
                 if (symbolOut === tradeSymbol) transactionType = 'sell';
 
                 swapsArray.push({
@@ -43,13 +67,13 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     category: tx.category,
                     bought: {
                         symbol: symbolOut,
-                        amount: amountOut,
+                        amount: amountOutRaw,
                         address: toTransfers[0].address,
                         pairAddress: toTransfers[0].from_address
                     },
                     sold: {
                         symbol: soldSymbol,
-                        amount: -amountIn,
+                        amount: -amountInRaw,
                         pairAddress: toTransfers[0].from_address
                     }
                 });
@@ -58,13 +82,38 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
 
             if (fromTransfers.length && !toTransfers.length && nativeReceive) {
                 const symbolIn = fromTransfers[0].token_symbol;
-                const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
-                const amountOut = parseFloat(nativeReceive.value_formatted || '0');
+                const amountInRaw = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+                const amountOutRaw = parseFloat(nativeReceive.value_formatted || '0');
 
                 let transactionType = 'sell';
                 let boughtSymbol = 'ETH';
                 if (['WETH', 'WBNB'].includes(tradeSymbol)) boughtSymbol = tradeSymbol;
-                if (symbolIn === 'USDT') transactionType = 'buy';
+                if (symbolIn === 'USDT') {
+                    transactionType = 'buy';
+                    swapsArray.push({
+                        transactionType,
+                        blockTimestamp: tx.block_timestamp,
+                        transactionHash: tx.hash,
+                        from: tx.from_address,
+                        to: tx.to_address,
+                        summary: tx.summary,
+                        category: tx.category,
+                        bought: {
+                            symbol: tradeSymbol,
+                            amount: amountOutRaw / nativeTokenPrice,
+                            address: nativeReceive.to_address,
+                            pairAddress: fromTransfers[0].to_address
+                        },
+                        sold: {
+                            symbol: 'USDT',
+                            amount: amountInRaw,
+                            address: fromTransfers[0].address,
+                            pairAddress: fromTransfers[0].to_address
+                        }
+                    });
+                    continue;
+                }
+
                 if (symbolIn === tradeSymbol) transactionType = 'buy';
 
                 swapsArray.push({
@@ -77,13 +126,13 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     category: tx.category,
                     bought: {
                         symbol: boughtSymbol,
-                        amount: amountOut,
+                        amount: amountOutRaw,
                         address: nativeReceive.to_address,
                         pairAddress: fromTransfers[0].to_address
                     },
                     sold: {
                         symbol: symbolIn,
-                        amount: amountIn,
+                        amount: amountInRaw,
                         address: fromTransfers[0].address,
                         pairAddress: fromTransfers[0].to_address
                     }
@@ -138,7 +187,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 };
                 bought = {
                     symbol: tradeSymbol,
-                    amount: amountOut / bnbPrice,
+                    amount: amountOut / nativeTokenPrice,
                     pairAddress: fromTransfers[0].to_address
                 };
             } else if (symbolIn === 'USDT') {
@@ -151,7 +200,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 };
                 sold = {
                     symbol: tradeSymbol,
-                    amount: -(amountIn / bnbPrice),
+                    amount: -(amountIn / nativeTokenPrice),
                     pairAddress: toTransfers[0].from_address
                 };
             } else if (symbolOut === tradeSymbol) {
