@@ -11,47 +11,15 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
     //     console.log('summary', transaction.summary);
     //     console.log('category', transaction.category);
     // });
-    console.log(123)
+
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
-            const {erc20_transfers = [], native_transfers = []} = tx;
+            const { erc20_transfers = [] } = tx;
 
             const fromTransfers = erc20_transfers.filter(t => t.from_address.toLowerCase() === address.toLowerCase());
             const toTransfers = erc20_transfers.filter(t => t.to_address.toLowerCase() === address.toLowerCase());
-            const nativeSend = native_transfers.find(n =>
-                n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send'
-            );
 
-            if (!fromTransfers.length && toTransfers.length && nativeSend) {
-                const symbolOut = toTransfers[0].token_symbol;
-                const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
-                const amountIn = parseFloat(nativeSend.value_formatted || '0');
-
-                swapsArray.push({
-                    transactionType: 'buy',
-                    blockTimestamp: tx.block_timestamp,
-                    transactionHash: tx.hash,
-                    from: tx.from_address,
-                    to: tx.to_address,
-                    summary: tx.summary,
-                    category: tx.category,
-                    bought: {
-                        symbol: symbolOut,
-                        amount: amountOut,
-                        address: toTransfers[0].address,
-                        pairAddress: toTransfers[0].from_address
-                    },
-                    sold: {
-                        symbol: symbol,
-                        amount: -amountIn,
-                        pairAddress: toTransfers[0].from_address
-                    }
-                });
-                return;
-            }
-
-
-            if (!fromTransfers.length || !toTransfers.length) return;
+            if (!fromTransfers.length || !toTransfers.length) continue;
 
             const symbolIn = fromTransfers[0].token_symbol;
             const symbolOut = toTransfers[0].token_symbol;
@@ -141,7 +109,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: toTransfers[0].from_address
                 };
             } else {
-                return;
+                continue;
             }
 
             swapsArray.push({
@@ -170,7 +138,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-    console.log(456)
+
     console.log('swapsArray', swapsArray)
 
     return {
