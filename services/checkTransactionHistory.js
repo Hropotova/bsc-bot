@@ -1,16 +1,8 @@
 const checkTransactionHistory = async (address, transactions, symbol, tradeSymbol, nativeTokenPrice) => {
     const swapsArray = [];
 
-    const transfersArray = [];
 
-    // transactions.forEach(transaction => {
-    //     console.log('address', address)
-    //     console.log('hash', transaction.hash);
-    //     console.log('erc20_transfers', transaction.erc20_transfers);
-    //     console.log('native_transfers', transaction.native_transfers);
-    //     console.log('summary', transaction.summary);
-    //     console.log('category', transaction.category);
-    // });
+    const transfersArray = [];
 
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
@@ -47,7 +39,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                             pairAddress: toTransfers[0].from_address
                         },
                         sold: {
-                            symbol: 'USDT',
+                            symbol: soldSymbol,
                             amount: -amountInRaw,
                             pairAddress: toTransfers[0].from_address
                         }
@@ -105,7 +97,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                             pairAddress: fromTransfers[0].to_address
                         },
                         sold: {
-                            symbol: 'USDT',
+                            symbol: symbolIn,
                             amount: amountInRaw,
                             address: fromTransfers[0].address,
                             pairAddress: fromTransfers[0].to_address
