@@ -149,60 +149,47 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 const priceIn = await getTokenPrice(fromTransfers[0].address, chain, tx.block_number);
                 const priceOut = await getTokenPrice(toTransfers[0].address, chain, tx.block_number);
 
-                const isSell = fromTransfers[0].direction === 'send';
-                const isBuy = toTransfers  [0].direction === 'receive';
-
-                if (isBuy) {
-                    const sold = {
-                        symbol: tradeSymbol,
-                        amount: -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
-                        pairAddress: toTransfers[0].from_address
-                    };
-                    const bought = {
+                swapsArray.push({
+                    transactionType: 'buy',
+                    blockTimestamp: tx.block_timestamp,
+                    transactionHash: tx.hash,
+                    from: tx.from_address,
+                    to: tx.to_address,
+                    summary: tx.summary,
+                    category: tx.category,
+                    bought: {
                         symbol: symbolOut,
                         amount: amountOut,
                         address: toTransfers[0].address,
                         pairAddress: toTransfers[0].from_address
-                    };
+                    },
+                    sold: {
+                        symbol: tradeSymbol,
+                        amount: -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
+                        pairAddress: toTransfers[0].from_address
+                    }
+                });
 
-                    swapsArray.push({
-                        transactionType: 'buy',
-                        blockTimestamp: tx.block_timestamp,
-                        transactionHash: tx.hash,
-                        from: tx.from_address,
-                        to: tx.to_address,
-                        summary: tx.summary,
-                        category: tx.category,
-                        bought,
-                        sold
-                    });
-                }
-
-                if (isSell) {
-                    const sold = {
-                        symbol: symbolIn,
-                        amount: amountIn,
-                        address: toTransfers[0].address,
-                        pairAddress: toTransfers[0].to_address
-                    };
-                    const bought = {
+                swapsArray.push({
+                    transactionType: 'sell',
+                    blockTimestamp: tx.block_timestamp,
+                    transactionHash: tx.hash,
+                    from: tx.from_address,
+                    to: tx.to_address,
+                    summary: tx.summary,
+                    category: tx.category,
+                    bought: {
                         symbol: tradeSymbol,
                         amount: ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
-                        pairAddress: toTransfers[0].to_address
-                    };
-
-                    swapsArray.push({
-                        transactionType: 'sell',
-                        blockTimestamp: tx.block_timestamp,
-                        transactionHash: tx.hash,
-                        from: tx.from_address,
-                        to: tx.to_address,
-                        summary: tx.summary,
-                        category: tx.category,
-                        bought,
-                        sold
-                    });
-                }
+                        pairAddress: fromTransfers[0].to_address
+                    },
+                    sold: {
+                        symbol: symbolIn,
+                        amount: amountIn,
+                        address: fromTransfers[0].address,
+                        pairAddress: fromTransfers[0].to_address
+                    }
+                });
                 continue;
             }
 
