@@ -165,7 +165,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     },
                     sold: {
                         symbol: tradeSymbol,
-                        amount: -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
+                        amount: priceOut ? -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice) : -((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
                         pairAddress: toTransfers[0].from_address
                     }
                 });
@@ -180,7 +180,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     category: tx.category,
                     bought: {
                         symbol: tradeSymbol,
-                        amount: ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
+                        amount: priceIn ? ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice) : ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
                         pairAddress: fromTransfers[0].to_address
                     },
                     sold: {
