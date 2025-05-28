@@ -68,7 +68,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        // console.log(tx)
+                        console.log(tx)
                     });
 
                     const tokenData = {};
