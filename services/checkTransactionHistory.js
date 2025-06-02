@@ -16,7 +16,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             const nativeSend = native_transfers.find(n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send');
             const nativeReceive = native_transfers.find(n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive');
 
-            if (!fromTransfers.length && toTransfers.length && nativeSend) {
+            if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].token_symbol !== 'VIRTUAL') {
                 const symbolOut = toTransfers[0].token_symbol;
                 const amountOutRaw = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountInRaw = parseFloat(nativeSend.value_formatted || '0');
@@ -74,7 +74,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 continue;
             }
 
-            if (fromTransfers.length && !toTransfers.length && nativeReceive) {
+            if (fromTransfers.length && !toTransfers.length && nativeReceive && fromTransfers[0].token_symbol !== 'VIRTUAL') {
                 const symbolIn = fromTransfers[0].token_symbol;
                 const amountInRaw = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountOutRaw = parseFloat(nativeReceive.value_formatted || '0');
@@ -138,8 +138,8 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             if (
                 fromTransfers.length &&
                 toTransfers.length &&
-                ![symbol, tradeSymbol, 'USDT'].includes(fromTransfers[0].token_symbol) &&
-                ![symbol, tradeSymbol, 'USDT'].includes(toTransfers[0].token_symbol)
+                ![symbol, tradeSymbol, 'USDT', 'VIRTUAL'].includes(fromTransfers[0].token_symbol) &&
+                ![symbol, tradeSymbol, 'USDT', 'VIRTUAL'].includes(toTransfers[0].token_symbol)
             ) {
                 console.log(tx.hash)
                 console.log(tx)
@@ -258,6 +258,36 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     amount: -(amountIn / nativeTokenPrice),
                     pairAddress: toTransfers[0].from_address
                 };
+            } else if (symbolOut === 'VIRTUAL' && chain === 'base') {
+                const virtualPrice = await getTokenPrice('0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', chain, tx.block_number);
+
+                transactionType = 'sell';
+                sold = {
+                    symbol: symbolIn,
+                    amount: amountIn,
+                    address: fromTransfers[0].address,
+                    pairAddress: fromTransfers[0].to_address
+                };
+                bought = {
+                    symbol: tradeSymbol,
+                    amount: (amountOut * virtualPrice?.usdPrice || 0) / nativeTokenPrice,
+                    pairAddress: fromTransfers[0].to_address
+                };
+            } else if (symbolIn === 'VIRTUAL' && chain === 'base') {
+                const virtualPrice = await getTokenPrice('0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', chain, tx.block_number);
+
+                transactionType = 'buy';
+                bought = {
+                    symbol: symbolOut,
+                    amount: amountOut,
+                    address: toTransfers[0].address,
+                    pairAddress: toTransfers[0].from_address
+                };
+                sold = {
+                    symbol: tradeSymbol,
+                    amount: -((amountIn * virtualPrice?.usdPrice || 0) / nativeTokenPrice),
+                    pairAddress: toTransfers[0].from_address
+                };
             } else if (symbolOut === tradeSymbol) {
                 transactionType = 'sell';
                 sold = {
@@ -315,7 +345,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-    console.log('swapsArray', swapsArray)
+    // console.log('swapsArray', swapsArray)
     return {
         swaps: swapsArray,
         transfers: transfersArray,
