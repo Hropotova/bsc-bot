@@ -141,8 +141,6 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 ![symbol, tradeSymbol, 'USDT', 'VIRTUAL'].includes(fromTransfers[0].token_symbol) &&
                 ![symbol, tradeSymbol, 'USDT', 'VIRTUAL'].includes(toTransfers[0].token_symbol)
             ) {
-                console.log(tx.hash)
-                console.log(tx)
                 const symbolIn = fromTransfers[0].token_symbol;
                 const symbolOut = toTransfers[0].token_symbol;
                 const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
@@ -345,7 +343,6 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
-    // console.log('swapsArray', swapsArray)
     return {
         swaps: swapsArray,
         transfers: transfersArray,

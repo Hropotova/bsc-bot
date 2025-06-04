@@ -25,9 +25,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     for (const address of splitAddresses) {
         try {
             // Get the active chains for a wallet address.
-            const chains = chainsToProcess.length
-                ? chainsToProcess
-                : await getActiveWalletChains(address);
+            const activeChains = await getActiveWalletChains(address);
+
+            const chains = chainsToProcess.length ? chainsToProcess : activeChains;
 
             const chainResults = {};
 
@@ -56,7 +56,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice, cfg.chain);
 
                     const targetHashes = [
-                        '0x5ce6c2c813cc52382f08865eb8bb439390465c20764267fc196869a121b543b8',
+                        '0x876c5492b79191e185653cfeb6efbf210e56580a2ea93bbc3c34828d4b566589',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
@@ -66,7 +66,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        console.log(tx)
+                        // console.log(tx)
                     });
 
                     const tokenData = {};
@@ -163,7 +163,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     // Add calculated data to JSON.
                     const addressData = {
                         chain_id: cfg.chain,
-                        active_chains: chains,
+                        active_chains: activeChains,
                         roi_pct: '',
                         average_pnl: '',
                         median_holding_hours: '',
