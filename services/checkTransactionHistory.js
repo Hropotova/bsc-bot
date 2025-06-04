@@ -1,10 +1,9 @@
 const {getTokenPrice} = require('../api/moralis');
 
-const checkTransactionHistory = async (address, transactions, symbol, tradeSymbol, nativeTokenPrice, chain) => {
+const checkTransactionHistory = async (config, address, transactions, nativeTokenPrice) => {
     const swapsArray = [];
-
-
     const transfersArray = [];
+    const virtualContract = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
 
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
@@ -16,15 +15,15 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             const nativeSend = native_transfers.find(n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send');
             const nativeReceive = native_transfers.find(n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive');
 
-            if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].token_symbol !== 'VIRTUAL') {
+            if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].address.toLowerCase() !== virtualContract) {
                 const symbolOut = toTransfers[0].token_symbol;
+                const contractOut = toTransfers[0].address;
                 const amountOutRaw = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountInRaw = parseFloat(nativeSend.value_formatted || '0');
 
                 let transactionType = 'buy';
-                let soldSymbol = symbol;
 
-                if (symbolOut === 'USDT') {
+                if (config.stable_coins.includes(contractOut)) {
                     transactionType = 'sell';
                     swapsArray.push({
                         transactionType,
@@ -35,13 +34,13 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                         summary: tx.summary,
                         category: tx.category,
                         bought: {
-                            symbol: tradeSymbol,
+                            symbol: config.trade_symbol,
                             amount: amountOutRaw / nativeTokenPrice,
                             address: toTransfers[0].address,
                             pairAddress: toTransfers[0].from_address
                         },
                         sold: {
-                            symbol: soldSymbol,
+                            symbol: config.symbol,
                             amount: -amountInRaw,
                             pairAddress: toTransfers[0].from_address
                         }
@@ -49,7 +48,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     continue;
                 }
 
-                if (symbolOut === tradeSymbol) transactionType = 'sell';
+                if (contractOut.toLowerCase() === config.contract.toLowerCase()) transactionType = 'sell';
 
                 swapsArray.push({
                     transactionType,
@@ -66,7 +65,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                         pairAddress: toTransfers[0].from_address
                     },
                     sold: {
-                        symbol: soldSymbol,
+                        symbol: config.symbol,
                         amount: -amountInRaw,
                         pairAddress: toTransfers[0].from_address
                     }
@@ -74,14 +73,16 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                 continue;
             }
 
-            if (fromTransfers.length && !toTransfers.length && nativeReceive && fromTransfers[0].token_symbol !== 'VIRTUAL') {
+            if (fromTransfers.length && !toTransfers.length && nativeReceive && fromTransfers[0].address.toLowerCase() !== virtualContract) {
                 const symbolIn = fromTransfers[0].token_symbol;
+                const contractIn = fromTransfers[0].address;
+
                 const amountInRaw = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountOutRaw = parseFloat(nativeReceive.value_formatted || '0');
 
                 let transactionType = 'sell';
 
-                if (symbolIn === 'USDT') {
+                if (config.stable_coins.includes(contractIn)) {
                     transactionType = 'buy';
                     swapsArray.push({
                         transactionType,
@@ -92,7 +93,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                         summary: tx.summary,
                         category: tx.category,
                         bought: {
-                            symbol: tradeSymbol,
+                            symbol: config.trade_symbol,
                             amount: amountOutRaw / nativeTokenPrice,
                             address: nativeReceive.to_address,
                             pairAddress: fromTransfers[0].to_address
@@ -107,7 +108,8 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     continue;
                 }
 
-                if (symbolIn === tradeSymbol) {
+                if (contractIn.toLowerCase() === config.contract.toLowerCase()) transactionType = 'sell';
+                {
                     transactionType = 'buy';
                 }
 
@@ -120,7 +122,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     summary: tx.summary,
                     category: tx.category,
                     bought: {
-                        symbol: tradeSymbol,
+                        symbol: config.trade_symbol,
                         amount: amountOutRaw,
                         address: nativeReceive.to_address,
                         pairAddress: fromTransfers[0].to_address
@@ -138,16 +140,16 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             if (
                 fromTransfers.length &&
                 toTransfers.length &&
-                ![symbol, tradeSymbol, 'USDT', 'VIRTUAL'].includes(fromTransfers[0].token_symbol) &&
-                ![symbol, tradeSymbol, 'USDT', 'VIRTUAL'].includes(toTransfers[0].token_symbol)
+                ![...config.stable_coins, config.contract, virtualContract].includes(fromTransfers[0].address.toLowerCase()) &&
+                ![...config.stable_coins, config.contract, virtualContract].includes(toTransfers[0].address.toLowerCase())
             ) {
                 const symbolIn = fromTransfers[0].token_symbol;
                 const symbolOut = toTransfers[0].token_symbol;
                 const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
 
-                const priceIn = await getTokenPrice(fromTransfers[0].address, chain, tx.block_number);
-                const priceOut = await getTokenPrice(toTransfers[0].address, chain, tx.block_number);
+                const priceIn = await getTokenPrice(fromTransfers[0].address, config.chain, tx.block_number);
+                const priceOut = await getTokenPrice(toTransfers[0].address, config.chain, tx.block_number);
 
                 swapsArray.push({
                     transactionType: 'buy',
@@ -164,7 +166,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                         pairAddress: toTransfers[0].from_address
                     },
                     sold: {
-                        symbol: tradeSymbol,
+                        symbol: config.trade_symbol,
                         amount: priceOut?.usdPrice ? -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice) : -((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
                         pairAddress: toTransfers[0].from_address
                     }
@@ -179,14 +181,14 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     summary: tx.summary,
                     category: tx.category,
                     bought: {
-                        symbol: tradeSymbol,
+                        symbol: config.trade_symbol,
                         amount: priceIn?.usdPrice ? ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice) : ((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
                         pairAddress: fromTransfers[0].to_address
                     },
                     sold: {
                         symbol: symbolIn,
                         amount: amountIn,
-                        address: toTransfers[0].address,
+                        address: fromTransfers[0].address,
                         pairAddress: fromTransfers[0].to_address
                     }
                 });
@@ -196,7 +198,9 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             if (!fromTransfers.length || !toTransfers.length) continue;
 
             const symbolIn = fromTransfers[0].token_symbol;
+            const contractIn = fromTransfers[0].address;
             const symbolOut = toTransfers[0].token_symbol;
+            const contractOut = toTransfers[0].address;
 
             const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
             const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
@@ -204,7 +208,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             let transactionType;
             let sold, bought;
 
-            if (symbolIn === symbol) {
+            if (contractIn.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'buy';
                 bought = {
                     symbol: symbolOut,
@@ -213,11 +217,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: toTransfers[0].from_address
                 };
                 sold = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: -amountIn,
                     pairAddress: toTransfers[0].from_address
                 };
-            } else if (symbolOut === symbol) {
+            } else if (contractOut.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'sell';
                 sold = {
                     symbol: symbolIn,
@@ -226,11 +230,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: fromTransfers[0].to_address
                 };
                 bought = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: amountOut,
                     pairAddress: fromTransfers[0].to_address
                 };
-            } else if (symbolOut === 'USDT') {
+            } else if (config.stable_coins.includes(contractOut)) {
                 transactionType = 'sell';
                 sold = {
                     symbol: symbolIn,
@@ -239,11 +243,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: fromTransfers[0].to_address
                 };
                 bought = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: amountOut / nativeTokenPrice,
                     pairAddress: fromTransfers[0].to_address
                 };
-            } else if (symbolIn === 'USDT') {
+            } else if (config.stable_coins.includes(contractIn)) {
                 transactionType = 'buy';
                 bought = {
                     symbol: symbolOut,
@@ -252,12 +256,12 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: toTransfers[0].from_address
                 };
                 sold = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: -(amountIn / nativeTokenPrice),
                     pairAddress: toTransfers[0].from_address
                 };
-            } else if (symbolOut === 'VIRTUAL' && chain === 'base') {
-                const virtualPrice = await getTokenPrice('0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', chain, tx.block_number);
+            } else if (contractOut.toLowerCase() === virtualContract && config.chain === 'base') {
+                const virtualPrice = await getTokenPrice(contractOut, config.chain, tx.block_number);
 
                 transactionType = 'sell';
                 sold = {
@@ -267,12 +271,12 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: fromTransfers[0].to_address
                 };
                 bought = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: (amountOut * virtualPrice?.usdPrice || 0) / nativeTokenPrice,
                     pairAddress: fromTransfers[0].to_address
                 };
-            } else if (symbolIn === 'VIRTUAL' && chain === 'base') {
-                const virtualPrice = await getTokenPrice('0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b', chain, tx.block_number);
+            } else if (contractIn.toLowerCase() === virtualContract && config.chain === 'base') {
+                const virtualPrice = await getTokenPrice(contractIn, config.chain, tx.block_number);
 
                 transactionType = 'buy';
                 bought = {
@@ -282,11 +286,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: toTransfers[0].from_address
                 };
                 sold = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: -((amountIn * virtualPrice?.usdPrice || 0) / nativeTokenPrice),
                     pairAddress: toTransfers[0].from_address
                 };
-            } else if (symbolOut === tradeSymbol) {
+            } else if (contractOut.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'sell';
                 sold = {
                     symbol: symbolIn,
@@ -295,11 +299,11 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: fromTransfers[0].to_address
                 };
                 bought = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: amountOut,
                     pairAddress: fromTransfers[0].to_address
                 };
-            } else if (symbolIn === tradeSymbol) {
+            } else if (contractIn.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'buy';
                 bought = {
                     symbol: symbolOut,
@@ -308,7 +312,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
                     pairAddress: toTransfers[0].from_address
                 };
                 sold = {
-                    symbol: tradeSymbol,
+                    symbol: config.trade_symbol,
                     amount: -amountIn,
                     pairAddress: toTransfers[0].from_address
                 };
@@ -343,6 +347,7 @@ const checkTransactionHistory = async (address, transactions, symbol, tradeSymbo
             });
         }
     }
+
     return {
         swaps: swapsArray,
         transfers: transfersArray,

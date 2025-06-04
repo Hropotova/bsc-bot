@@ -41,7 +41,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 if (transactions.length < process.env.TRANSACTIONS_COUNT) {
 
                     // Get native token price in USD
-                    const bnbPrice = await getTokenPrice(cfg.contract, cfg.chain);
+                    const {usdPrice} = await getTokenPrice(cfg.contract, cfg.chain);
 
                     // Get the full transaction history of a specified wallet address.
                     const transactionsHistory = await getWalletHistory(address, cfg.chain);
@@ -53,10 +53,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     const {
                         swaps,
                         transfers,
-                    } = await checkTransactionHistory(address, transactionsHistory, cfg.symbol, cfg.trade_symbol, bnbPrice.usdPrice, cfg.chain);
+                    } = await checkTransactionHistory(cfg, address, transactionsHistory, usdPrice);
 
                     const targetHashes = [
-                        '0x876c5492b79191e185653cfeb6efbf210e56580a2ea93bbc3c34828d4b566589',
+                        '0xe5017a25d67f4148419f731dedbf04b0675e973e935dfe3adc5a79f27d2ace66',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
@@ -66,7 +66,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        // console.log(tx)
+                        console.log(tx)
                     });
 
                     const tokenData = {};
@@ -124,7 +124,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const contractAddress = token.token_address;
                         if (tokenData[contractAddress]) {
                             const usdValue = token.usd_value || 0;
-                            tokenData[contractAddress].balance = usdValue / bnbPrice.usdPrice.toFixed(2);
+                            tokenData[contractAddress].balance = usdValue / usdPrice.toFixed(2);
                         }
                     }
 
@@ -144,7 +144,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
 
                     // Filter traded tokens.
-                    for (const token of [...cfg.contracts, address]) {
+                    for (const token of [...cfg.excluded_contracts, address]) {
                         const lowerToken = token.toLowerCase();
                         if (tokenData[lowerToken]) {
                             delete tokenData[lowerToken];
