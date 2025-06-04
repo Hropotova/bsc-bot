@@ -66,7 +66,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        console.log(tx)
+                        // console.log(tx)
                     });
 
                     const tokenData = {};
@@ -205,7 +205,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const createdTime = new Date(pairStat?.pairCreated);
                             const firstBuyTime = new Date(firstTrade.blockTimestamp);
 
-                            diffMinutes = Math.round((firstBuyTime - createdTime) / (1000 * 60));
+                            diffMinutes = stats?.pairCreated && Math.round((firstBuyTime - createdTime) / (1000 * 60));
                         }
 
                         const realizedPnl = stats.balance + (stats.received - stats.spent);

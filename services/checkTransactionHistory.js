@@ -108,8 +108,7 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                     continue;
                 }
 
-                if (contractIn.toLowerCase() === config.contract.toLowerCase()) transactionType = 'sell';
-                {
+                if (contractIn.toLowerCase() === config.contract.toLowerCase()) {
                     transactionType = 'buy';
                 }
 
