@@ -113,7 +113,6 @@ module.exports = {
             '0xf587b7116879a529353cc71ee959cd69fd5cae48',
             '0xbe9895146f7af43049ca1c1ae358b0541ea49704',
             '0x60a3e35cc302bfa44cb288bc5a4f316fdb1adb42',
-            '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca',
             '0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b',
             '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22'
         ],
