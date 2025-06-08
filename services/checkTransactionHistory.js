@@ -351,8 +351,6 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
         }
     }
 
-    console.log('swapsArray', swapsArray);
-
     return {
         swaps: swapsArray,
         transfers: transfersArray,
