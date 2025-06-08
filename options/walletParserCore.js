@@ -17,6 +17,7 @@ const {associatedAddresses} = require('../services/associatedAddresses');
 const {averageHoldingHours} = require('../services/averageHoldingHours');
 
 const config = require('../config.js');
+const {getDexscreenerTokenPrice} = require("../api/dexscreener");
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
@@ -120,12 +121,35 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     }
 
                     // Convert USD balances to WBNB equivalents.
-                    for (const token of balances) {
-                        const contractAddress = token.token_address;
-                        if (tokenData[contractAddress]) {
-                            const usdValue = token.usd_value || 0;
-                            tokenData[contractAddress].balance = usdValue / usdPrice.toFixed(2);
+                    function formatUnitsManual(value, decimals = 18) {
+                        let s = value.toString();
+
+                        if (s.length <= decimals) {
+                            s = s.padStart(decimals + 1, '0');
                         }
+
+                        const intPart = s.slice(0, s.length - decimals);
+                        let fracPart = s.slice(s.length - decimals);
+
+                        fracPart = fracPart.replace(/0+$/, '');
+
+                        return `${intPart}${fracPart ? '.' + fracPart : ''}`;
+                    }
+
+                    for (const token of balances) {
+                        const addr = token.token_address;
+                        if (!tokenData[addr]) continue;
+
+                        const amountStr = formatUnitsManual(token.balance, token.decimals);
+                        const amount = parseFloat(amountStr);
+
+                        let usdValue = token.usd_value;
+                        if (!usdValue || usdValue === 0) {
+                            const data = await getDexscreenerTokenPrice(addr, cfg.dexscreener_chain_id);
+                            usdValue = amount * Number(data[0]?.priceUsd || 0);
+                        }
+
+                        tokenData[addr].balance = usdValue / usdPrice;
                     }
 
                     // Remove tokens with no inflow and no trades.
@@ -204,9 +228,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             const createdTime = new Date(pairStat?.pairCreated);
                             const firstBuyTime = new Date(firstTrade.blockTimestamp);
-                            console.log('contract', contract)
-                            console.log('pairStat?.pairCreated', pairStat?.pairCreated)
-                            console.log('firstTrade.blockTimestamp', firstTrade.blockTimestamp)
+
                             diffMinutes = pairStat?.pairCreated && Math.round((firstBuyTime - createdTime) / (1000 * 60));
                         }
 
