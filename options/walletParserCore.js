@@ -62,11 +62,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
 
                     const matchingTransactions = transactionsHistory.filter(tx =>
-                        // hashSet.has(tx.hash)
+                        hashSet.has(tx.hash)
                     );
 
                     matchingTransactions.forEach(tx => {
-                        console.log(tx)
+                        // console.log(tx)
                     });
 
                     const tokenData = {};
