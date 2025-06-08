@@ -15,6 +15,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
             const nativeSend = native_transfers.find(n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send');
             const nativeReceive = native_transfers.find(n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive');
 
+            let typeSwap;
+
             if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].address.toLowerCase() !== virtualContract) {
                 const symbolOut = toTransfers[0].token_symbol;
                 const contractOut = toTransfers[0].address;
@@ -25,6 +27,7 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
 
                 if (config.stable_coins.includes(contractOut)) {
                     transactionType = 'sell';
+                    typeSwap = 1;
                     swapsArray.push({
                         transactionType,
                         blockTimestamp: tx.block_timestamp,
@@ -81,6 +84,7 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 const amountOutRaw = parseFloat(nativeReceive.value_formatted || '0');
 
                 let transactionType = 'sell';
+                typeSwap = 2;
 
                 if (config.stable_coins.includes(contractIn)) {
                     transactionType = 'buy';
@@ -142,6 +146,7 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 ![...config.stable_coins, config.contract, virtualContract].includes(fromTransfers[0].address.toLowerCase()) &&
                 ![...config.stable_coins, config.contract, virtualContract].includes(toTransfers[0].address.toLowerCase())
             ) {
+                typeSwap = 3;
                 const symbolIn = fromTransfers[0].token_symbol;
                 const symbolOut = toTransfers[0].token_symbol;
                 const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
@@ -209,6 +214,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
 
             if (contractIn.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'buy';
+                typeSwap = 4;
+
                 bought = {
                     symbol: symbolOut,
                     amount: amountOut,
@@ -222,6 +229,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 };
             } else if (contractOut.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'sell';
+                typeSwap = 5;
+
                 sold = {
                     symbol: symbolIn,
                     amount: amountIn,
@@ -235,6 +244,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 };
             } else if (config.stable_coins.includes(contractOut)) {
                 transactionType = 'sell';
+                typeSwap = 6;
+
                 sold = {
                     symbol: symbolIn,
                     amount: amountIn,
@@ -248,6 +259,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 };
             } else if (config.stable_coins.includes(contractIn)) {
                 transactionType = 'buy';
+                typeSwap = 7;
+
                 bought = {
                     symbol: symbolOut,
                     amount: amountOut,
@@ -263,6 +276,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 const virtualPrice = await getTokenPrice(contractOut, config.chain, tx.block_number);
 
                 transactionType = 'sell';
+                typeSwap = 8;
+
                 sold = {
                     symbol: symbolIn,
                     amount: amountIn,
@@ -278,6 +293,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 const virtualPrice = await getTokenPrice(contractIn, config.chain, tx.block_number);
 
                 transactionType = 'buy';
+                typeSwap = 9;
+
                 bought = {
                     symbol: symbolOut,
                     amount: amountOut,
@@ -289,39 +306,13 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                     amount: -((amountIn * virtualPrice?.usdPrice || 0) / nativeTokenPrice),
                     pairAddress: toTransfers[0].from_address
                 };
-            } else if (contractOut.toLowerCase() === config.contract.toLowerCase()) {
-                transactionType = 'sell';
-                sold = {
-                    symbol: symbolIn,
-                    amount: amountIn,
-                    address: fromTransfers[0].address,
-                    pairAddress: fromTransfers[0].to_address
-                };
-                bought = {
-                    symbol: config.trade_symbol,
-                    amount: amountOut,
-                    pairAddress: fromTransfers[0].to_address
-                };
-            } else if (contractIn.toLowerCase() === config.contract.toLowerCase()) {
-                transactionType = 'buy';
-                bought = {
-                    symbol: symbolOut,
-                    amount: amountOut,
-                    address: toTransfers[0].address,
-                    pairAddress: toTransfers[0].from_address
-                };
-                sold = {
-                    symbol: config.trade_symbol,
-                    amount: -amountIn,
-                    pairAddress: toTransfers[0].from_address
-                };
             } else {
                 continue;
             }
 
-
             swapsArray.push({
                 transactionType,
+                typeSwap,
                 blockTimestamp: tx.block_timestamp,
                 transactionHash: tx.hash,
                 from: tx.from_address,
