@@ -12,15 +12,28 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
             const fromTransfers = erc20_transfers.filter(t => t.from_address.toLowerCase() === address.toLowerCase());
             const toTransfers = erc20_transfers.filter(t => t.to_address.toLowerCase() === address.toLowerCase());
 
+            let symbolOut, contractOut;
+            let symbolIn, contractIn;
+            if (toTransfers.length) {
+                symbolOut = toTransfers[0].token_symbol;
+                contractOut = toTransfers[0].address;
+            }
+
+            if (fromTransfers.length) {
+                symbolIn = fromTransfers[0].token_symbol;
+                contractIn = fromTransfers[0].address;
+            }
+
             const nativeSend = native_transfers.find(n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send');
             const nativeReceive = native_transfers.find(n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive');
 
             let typeSwap;
 
             if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].address.toLowerCase() !== virtualContract) {
-                const symbolOut = toTransfers[0].token_symbol;
-                const contractOut = toTransfers[0].address;
-                const amountOutRaw = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+
+                const amountOutRaw = toTransfers
+                    .filter(t => t.address.toLowerCase() === contractOut)
+                    .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountInRaw = parseFloat(nativeSend.value_formatted || '0');
 
                 let transactionType = 'buy';
@@ -77,10 +90,9 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
             }
 
             if (fromTransfers.length && !toTransfers.length && nativeReceive && fromTransfers[0].address.toLowerCase() !== virtualContract) {
-                const symbolIn = fromTransfers[0].token_symbol;
-                const contractIn = fromTransfers[0].address;
-
-                const amountInRaw = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+                const amountInRaw = fromTransfers
+                    .filter(t => t.address.toLowerCase() === contractIn)
+                    .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
                 const amountOutRaw = parseFloat(nativeReceive.value_formatted || '0');
 
                 let transactionType = 'sell';
@@ -147,10 +159,12 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
                 ![...config.stable_coins, config.contract, virtualContract].includes(toTransfers[0].address.toLowerCase())
             ) {
                 typeSwap = 3;
-                const symbolIn = fromTransfers[0].token_symbol;
-                const symbolOut = toTransfers[0].token_symbol;
-                const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
-                const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+                const amountIn = fromTransfers
+                    .filter(t => t.address.toLowerCase() === contractIn)
+                    .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+                const amountOut = toTransfers
+                    .filter(t => t.address.toLowerCase() === contractOut)
+                    .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
 
                 const priceIn = await getTokenPrice(fromTransfers[0].address, config.chain, tx.block_number);
                 const priceOut = await getTokenPrice(toTransfers[0].address, config.chain, tx.block_number);
@@ -201,13 +215,12 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
 
             if (!fromTransfers.length || !toTransfers.length) continue;
 
-            const symbolIn = fromTransfers[0].token_symbol;
-            const contractIn = fromTransfers[0].address;
-            const symbolOut = toTransfers[0].token_symbol;
-            const contractOut = toTransfers[0].address;
-
-            const amountIn = fromTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
-            const amountOut = toTransfers.reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+            const amountIn = fromTransfers
+                .filter(t => t.address.toLowerCase() === contractIn)
+                .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
+            const amountOut = toTransfers
+                .filter(t => t.address.toLowerCase() === contractOut)
+                .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
 
             let transactionType;
             let sold, bought;
@@ -337,6 +350,8 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
             });
         }
     }
+
+    console.log('swapsArray', swapsArray);
 
     return {
         swaps: swapsArray,
