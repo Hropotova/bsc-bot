@@ -57,7 +57,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     } = await checkTransactionHistory(cfg, address, transactionsHistory, usdPrice);
 
                     const targetHashes = [
-                        '0xef627f77c6b44226ee1678d337dfb02559a0c9c00d8e189f525665a0f05a3ea2',
+                        '0xa4951f15d856b1b479db3bbf928b8b1e6a8da1ba97fd90ca0ca108ce9fa4b013',
+                        '0xbc2cd5771dde76ccb6ac653712f0dc26fce108628551269705e917dc92bc82e6',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
