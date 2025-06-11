@@ -9,6 +9,31 @@ const api = axios.create({
     }
 });
 
+// Get all swap related transactions (buy, sell).
+const getWalletTokenSwaps = async (address, chain) => {
+    try {
+        let cursor = null;
+        let allSwaps = [];
+
+        while (true) {
+            const url = `wallets/${address}/swaps?chain=${chain}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
+            const response = await api.get(url);
+            const data = response.data;
+            const swaps = data.result || [];
+
+            allSwaps.push(...swaps);
+
+            if (!data.cursor || swaps.length < 100) break;
+            cursor = data.cursor;
+        }
+
+        return allSwaps;
+    } catch (error) {
+        console.error(`Error fetching swaps for ${address}:`, error.message);
+        return [];
+    }
+};
+
 // Retrieve the full transaction history of a specified wallet address, including sends, receives, token.
 const getWalletHistory = async (address, chain) => {
     try {
@@ -109,9 +134,10 @@ const getPairStats = async (address, chain) => {
 };
 
 module.exports = {
-    getWalletHistory,
-    getWalletTokenBalances,
-    getActiveWalletChains,
-    getTokenPrice,
     getPairStats,
+    getTokenPrice,
+    getWalletHistory,
+    getWalletTokenSwaps,
+    getActiveWalletChains,
+    getWalletTokenBalances,
 };

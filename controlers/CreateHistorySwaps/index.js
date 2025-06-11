@@ -1,4 +1,6 @@
-const {getTokenPrice} = require("../../api/moralis");
+const {getTokenPrice} = require('../../api/moralis');
+
+const {checkLostSwapsInTransfers} = require('./services');
 
 const createHistorySwaps = async (config, address, transactions, nativeTokenPrice) => {
     const swapsArray = [];
@@ -351,9 +353,12 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
         }
     }
 
+    // Check lost swaps in transfers.
+    const { swaps, transfers } = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray);
+
     return {
-        swaps: swapsArray,
-        transfers: transfersArray,
+        swaps,
+        transfers
     };
 };
 
