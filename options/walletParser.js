@@ -1,7 +1,6 @@
 const {walletParserCore} = require('./walletParserCore');
 const config = require('../config.js');
 const fs = require('fs');
-const path = require('path');
 
 async function walletParserSingleChain(addresses, bot, chatId, chainKey) {
     await walletParserCore(addresses, bot, chatId, [chainKey]);

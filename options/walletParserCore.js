@@ -10,14 +10,11 @@ const {
     getPairStats
 } = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
+const {getDexscreenerTokenPrice} = require('../api/dexscreener');
 
-const {checkTransactionHistory} = require('../services/checkTransactionHistory');
-const {transactionsFrequency} = require('../services/transactionsFrequency');
-const {associatedAddresses} = require('../services/associatedAddresses');
-const {averageHoldingHours} = require('../services/averageHoldingHours');
+const {createHistorySwaps, transactionsFrequency, associatedAddresses, averageHoldingHours} = require('../controlers');
 
 const config = require('../config.js');
-const {getDexscreenerTokenPrice} = require("../api/dexscreener");
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
@@ -54,11 +51,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     const {
                         swaps,
                         transfers,
-                    } = await checkTransactionHistory(cfg, address, transactionsHistory, usdPrice);
+                    } = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
 
                     const targetHashes = [
-                        '0xa4951f15d856b1b479db3bbf928b8b1e6a8da1ba97fd90ca0ca108ce9fa4b013',
-                        '0xbc2cd5771dde76ccb6ac653712f0dc26fce108628551269705e917dc92bc82e6',
+                        '0x06ae4b2ddbb4cff29dbbe428d6b310a823e70e48515ed40f9b9fa6f6af5eef07',
                     ];
 
                     const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
@@ -121,7 +117,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
                     }
 
-                    // Convert USD balances to WBNB equivalents.
+                    // Convert USD balances to Native Token equivalents.
                     function formatUnitsManual(value, decimals = 18) {
                         let s = value.toString();
 
@@ -163,6 +159,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
                         if (inflowCount > 0 && buyCount === 0 && sellCount === 0) {
+                            console.log('contract', contract)
                             delete tokenData[contract];
                         }
                     }
@@ -327,6 +324,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         ? validTokens.reduce((sum, t) => sum + ((t.pnl.total / t.spent) * 100) * t.spent, 0) / totalSpent
                         : null;
 
+                    // Add performance score to address data.
                     addressData.performance_score = {
                         token_accuracy_pct: token_accuracy_pct != null ? Number(token_accuracy_pct.toFixed(2)) : null,
                         avg_token_roi_pct: avg_token_roi_pct != null ? Number(avg_token_roi_pct.toFixed(2)) : null,
@@ -338,13 +336,15 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     chainResults[chainKey] = addressData;
 
                     const filePath = `${addressData.average_pnl}${cfg.symbol.toLowerCase()} - ${address}.json`;
+
                     fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
+
                     await bot.sendDocument(chatId, filePath, {
                         caption: `\`${address}\``,
                         parse_mode: 'Markdown',
                     });
-                    fs.unlinkSync(filePath);
 
+                    fs.unlinkSync(filePath);
                 } else {
                     await bot.sendMessage(chatId,
                         `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``,

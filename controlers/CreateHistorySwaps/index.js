@@ -1,6 +1,6 @@
-const {getTokenPrice} = require('../api/moralis');
+const {getTokenPrice} = require("../../api/moralis");
 
-const checkTransactionHistory = async (config, address, transactions, nativeTokenPrice) => {
+const createHistorySwaps = async (config, address, transactions, nativeTokenPrice) => {
     const swapsArray = [];
     const transfersArray = [];
     const virtualContract = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
@@ -357,4 +357,4 @@ const checkTransactionHistory = async (config, address, transactions, nativeToke
     };
 };
 
-module.exports = {checkTransactionHistory};
+module.exports = {createHistorySwaps};
