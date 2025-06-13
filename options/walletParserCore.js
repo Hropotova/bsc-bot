@@ -54,17 +54,20 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     } = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
 
                     const targetHashes = [
-                        '0x06ae4b2ddbb4cff29dbbe428d6b310a823e70e48515ed40f9b9fa6f6af5eef07',
+                        '0x87594fcf6dafe0c20d7a364b53a97123fbf963961df8c43d2a59084745d2905d',
+                        '0x055d03a6b609ca911079a1d260bc6f31511096f36b33f3706c1f9ba595641d2e',
+                        '0xafc20980525f984efe61fa6f0da7e6c83a026fbbef49f77b44e40c42c1f4fa6e',
+                        '0xf605d0d50791007c56a3ce34908c068f16c910cf3ee5913d0e471be5b964a037',
                     ];
 
-                    const hashSet = new Set(targetHashes.map(h => h.toLowerCase()));
+                    const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
 
-                    const matchingTransactions = transactionsHistory.filter(tx =>
-                        hashSet.has(tx.hash)
+                    const matchingTransactions = swaps.filter(tx =>
+                        lowerCaseHashes.includes(tx.transactionHash.toLowerCase())
                     );
 
                     matchingTransactions.forEach(tx => {
-                        // console.log(tx)
+                        console.log(tx);
                     });
 
                     const tokenData = {};
