@@ -85,6 +85,7 @@ module.exports = {
             '0x3ee2200efb3400fabb9aacf31297cbdd1d435d47',
             '0xcc42724c6683b7e57334c4e856f4c9965ed682bd',
             '0x8d0d000ee44948fc98c9b98a4fa4921476f08b0d',
+            '0x0000000000000000000000000000000000000000',
         ],
     },
     base: {
