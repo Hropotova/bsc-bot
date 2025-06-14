@@ -12,7 +12,12 @@ const {
 const {getAllTransactions} = require('../api/scan');
 const {getDexscreenerTokenPrice} = require('../api/dexscreener');
 
-const {createHistorySwaps, transactionsFrequency, associatedAddresses, averageHoldingHours} = require('../controlers');
+const {
+    createHistorySwaps,
+    transactionsFrequency,
+    associatedAddresses,
+    averageHoldingHours,
+} = require('../controlers');
 
 const config = require('../config.js');
 
@@ -175,6 +180,46 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
                     }
 
+                    // Merge virtual tokens.
+                    const symbolGroups = {};
+
+                    for (const [address, data] of Object.entries(tokenData)) {
+                        const symbol = data.symbol;
+                        if (!symbol) continue;
+
+                        if (!symbolGroups[symbol]) symbolGroups[symbol] = [];
+                        symbolGroups[symbol].push({address, data});
+                    }
+
+                    for (const group of Object.values(symbolGroups)) {
+                        if (group.length <= 1) continue;
+
+                        const main = group[0].data;
+                        if (!main.same_contracts) main.same_contracts = {};
+
+                        for (let i = 1; i < group.length; i++) {
+                            const current = group[i].data;
+                            const currentAddress = group[i].address;
+
+                            const hasVirtual = [...(main.trades || []), ...(current.trades || [])].some(
+                                t => t.bought?.isVirtual || t.sold?.isVirtual
+                            );
+
+                            if (!hasVirtual) continue;
+
+                            main.spent += current.spent;
+                            main.received += current.received;
+                            main.balance += current.balance;
+                            main.trades.push(...current.trades);
+
+                            main.same_contracts[currentAddress] = {
+                                symbol: current.symbol
+                            };
+
+                            delete tokenData[currentAddress];
+                        }
+                    }
+
                     // Get transaction frequency for address.
                     const transaction_frequency = transactionsFrequency(address, transactionsHistory);
 
@@ -234,7 +279,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         const realizedPnl = stats.balance + (stats.received - stats.spent);
 
-                        const tokenTransfers = transfers.filter(i => i.contract === contract);
+                        const allTokenContracts = [contract.toLowerCase()];
+                        if (stats.same_contracts) {
+                            allTokenContracts.push(...Object.keys(stats.same_contracts).map(c => c));
+                        }
+
+                        const tokenTransfers = transfers.filter(i => allTokenContracts.includes(i.contract));
 
                         const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                         const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
@@ -291,7 +341,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             },
                             ...((buyCount > 0 && stats.received === 0 && stats.balance === 0 && outflowCount === 0) && {
                                 note: 'excluded from ROI/accuracy due to zero cost basis'
-                            })
+                            }),
+                            ...(stats.same_contracts) && {
+                                same_contracts: stats.same_contracts,
+
+                            }
                         };
                     }
 

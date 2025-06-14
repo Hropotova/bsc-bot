@@ -300,6 +300,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     pairAddress: fromTransfers[0].to_address
                 };
                 bought = {
+                    isVirtual: true,
                     symbol: config.trade_symbol,
                     amount: (amountOut * virtualPrice?.usdPrice || 0) / nativeTokenPrice,
                     pairAddress: fromTransfers[0].to_address
@@ -317,6 +318,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     pairAddress: toTransfers[0].from_address
                 };
                 sold = {
+                    isVirtual: true,
                     symbol: config.trade_symbol,
                     amount: -((amountIn * virtualPrice?.usdPrice || 0) / nativeTokenPrice),
                     pairAddress: toTransfers[0].from_address
@@ -352,6 +354,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             });
         }
     }
+
 
     // Check lost swaps in transfers.
     const { swaps, transfers } = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray);
