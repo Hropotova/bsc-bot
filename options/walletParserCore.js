@@ -67,7 +67,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     );
 
                     matchingTransactions.forEach(tx => {
-                        console.log(tx);
+                        // console.log(tx);
                     });
 
                     const tokenData = {};
@@ -162,7 +162,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
                         if (inflowCount > 0 && buyCount === 0 && sellCount === 0) {
-                            console.log('contract', contract)
                             delete tokenData[contract];
                         }
                     }
