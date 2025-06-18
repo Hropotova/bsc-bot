@@ -34,7 +34,7 @@ bot.on('callback_query', async ({message, data}) => {
 
     if (data === 'chain_id') {
         userState[chatId] = {mode: 'chain_id'};
-        return bot.sendMessage(chatId, 'Enter the chain ID (e.g., bsc, eth, base):');
+        return bot.sendMessage(chatId, 'Enter the chain ID (e.g., bsc, eth, base, avalanche):');
     }
 
     if (data === 'active_chains') {

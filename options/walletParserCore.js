@@ -17,6 +17,7 @@ const {
     transactionsFrequency,
     associatedAddresses,
     averageHoldingHours,
+    mergeVirtualTokens,
 } = require('../controlers');
 
 const config = require('../config.js');
@@ -53,27 +54,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     const balances = await getWalletTokenBalances(address, cfg.chain);
 
                     // Get lost swaps and transfers.
-                    const {
-                        swaps,
-                        transfers,
-                    } = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
-
-                    const targetHashes = [
-                        '0x87594fcf6dafe0c20d7a364b53a97123fbf963961df8c43d2a59084745d2905d',
-                        '0x055d03a6b609ca911079a1d260bc6f31511096f36b33f3706c1f9ba595641d2e',
-                        '0xafc20980525f984efe61fa6f0da7e6c83a026fbbef49f77b44e40c42c1f4fa6e',
-                        '0xf605d0d50791007c56a3ce34908c068f16c910cf3ee5913d0e471be5b964a037',
-                    ];
-
-                    const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
-
-                    const matchingTransactions = swaps.filter(tx =>
-                        lowerCaseHashes.includes(tx.transactionHash.toLowerCase())
-                    );
-
-                    matchingTransactions.forEach(tx => {
-                        // console.log(tx);
-                    });
+                    const {swaps, transfers} = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
 
                     const tokenData = {};
 
@@ -159,9 +140,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     // Remove tokens with no inflow and no trades.
                     for (const [contract, stats] of Object.entries(tokenData)) {
-                        const inflowCount = transfers.filter(
-                            t => t.category === 'receive' || t.category === 'token receive'
-                        ).length;
+                        const inflowCount = transfers.filter(t => t.category === 'receive' || t.category === 'token receive').length;
 
                         const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                         const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
@@ -170,7 +149,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             delete tokenData[contract];
                         }
                     }
-
 
                     // Filter traded tokens.
                     for (const token of [...cfg.excluded_contracts, address]) {
@@ -181,44 +159,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     }
 
                     // Merge virtual tokens.
-                    const symbolGroups = {};
-
-                    for (const [address, data] of Object.entries(tokenData)) {
-                        const symbol = data.symbol;
-                        if (!symbol) continue;
-
-                        if (!symbolGroups[symbol]) symbolGroups[symbol] = [];
-                        symbolGroups[symbol].push({address, data});
-                    }
-
-                    for (const group of Object.values(symbolGroups)) {
-                        if (group.length <= 1) continue;
-
-                        const main = group[0].data;
-                        if (!main.same_contracts) main.same_contracts = {};
-
-                        for (let i = 1; i < group.length; i++) {
-                            const current = group[i].data;
-                            const currentAddress = group[i].address;
-
-                            const hasVirtual = [...(main.trades || []), ...(current.trades || [])].some(
-                                t => t.bought?.isVirtual || t.sold?.isVirtual
-                            );
-
-                            if (!hasVirtual) continue;
-
-                            main.spent += current.spent;
-                            main.received += current.received;
-                            main.balance += current.balance;
-                            main.trades.push(...current.trades);
-
-                            main.same_contracts[currentAddress] = {
-                                symbol: current.symbol
-                            };
-
-                            delete tokenData[currentAddress];
-                        }
-                    }
+                    mergeVirtualTokens(tokenData);
 
                     // Get transaction frequency for address.
                     const transaction_frequency = transactionsFrequency(address, transactionsHistory);
@@ -395,10 +336,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
 
-                    await bot.sendDocument(chatId, filePath, {
-                        caption: `\`${address}\``,
-                        parse_mode: 'Markdown',
-                    });
+                    await bot.sendDocument(chatId, filePath, {caption: `\`${address}\``, parse_mode: 'Markdown'});
 
                     fs.unlinkSync(filePath);
                 } else {
@@ -455,14 +393,16 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 };
 
                 const aggDir = path.resolve(__dirname, '..', 'aggregates');
+
                 if (!fs.existsSync(aggDir)) fs.mkdirSync(aggDir, {recursive: true});
+
                 const aggPath = path.join(aggDir, `${address}_multichain.json`);
+
                 fs.writeFileSync(aggPath, JSON.stringify(aggregated, null, 2));
 
-                await bot.sendDocument(chatId, aggPath, {
-                    caption: `\`${address}\``,
-                    parse_mode: 'Markdown',
-                });
+
+                await bot.sendDocument(chatId, aggPath, {caption: `\`${address}\``, parse_mode: 'Markdown'});
+
                 fs.unlinkSync(aggPath);
             }
 
