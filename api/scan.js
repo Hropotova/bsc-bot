@@ -29,4 +29,30 @@ const getAllTransactions = async (address, chain_id) => {
     }
 };
 
-module.exports = {getAllTransactions};
+const getTokenTransfers = async (address, contractAddress, chain_id) => {
+    try {
+        console.log('address', address);
+        console.log('contractAddress', contractAddress);
+        console.log('chain_id', chain_id)
+        const response = await api.get('', {
+            params: {
+                chainid: chain_id,
+                module: 'account',
+                action: 'tokentx',
+                address: address,
+                contractaddress: contractAddress,
+                startblock: 0,
+                endblock: 99999999,
+                sort: 'asc',
+                apikey: process.env.SCAN_API_KEY,
+            }
+        });
+        return response.data.result;
+    } catch (error) {
+        console.error(`Error fetching token transfers for ${address} (token: ${contractAddress}):`, error.message);
+        return [];
+    }
+};
+
+
+module.exports = {getAllTransactions, getTokenTransfers};

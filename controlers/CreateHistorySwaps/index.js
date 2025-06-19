@@ -6,7 +6,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
     const swapsArray = [];
     const transfersArray = [];
     const virtualContract = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
-
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
             const {erc20_transfers = [], native_transfers = []} = tx;
@@ -354,7 +353,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             });
         }
     }
-
 
     // Check lost swaps in transfers.
     const { swaps, transfers } = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray);
