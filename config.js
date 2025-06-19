@@ -14,6 +14,7 @@ module.exports = {
             '0x6b175474e89094c44da98b954eedeac495271d0f',
             '0xc5f0f7b66764f6ec8c8dff7ba683102295e16409',
             '0x6c3ea9036406852006290770bedfcaba0e23a0e8',
+            '0xeb466342c4d449bc9f53a865d5cb90586f405215',
         ],
         excluded_contracts: [
             '0xdac17f958d2ee523a2206206994597c13d831ec7',
@@ -45,6 +46,7 @@ module.exports = {
             '0x18084fba666a33d37592fa2633fd49a74dd93a88',
             '0x35fa164735182de50811e8e2e824cfb9b6118ac2',
             '0x136471a34f6ef19fe571effc1ca711fdb8e49f2b',
+            '0xeb466342c4d449bc9f53a865d5cb90586f405215',
         ],
     },
     bsc: {
@@ -100,6 +102,7 @@ module.exports = {
             '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
             '0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34',
             '0x50c5725949a6f0c72e6c4a641f24049a917db0cb',
+            '0xeb466342c4d449bc9f53a865d5cb90586f405215',
         ],
         excluded_contracts: [
             '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
@@ -120,6 +123,7 @@ module.exports = {
             '0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b',
             '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22',
             '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca'
+            '0xeb466342c4d449bc9f53a865d5cb90586f405215',
         ],
     },
     avalanche: {
