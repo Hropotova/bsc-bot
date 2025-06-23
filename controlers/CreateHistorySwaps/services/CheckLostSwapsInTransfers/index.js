@@ -39,7 +39,6 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         if (!isBoughtSafe) {
             const boughtTransfers = await getTokenTransfers(address, boughtAddress, config.chain_id);
             if (Array.isArray(boughtTransfers) && boughtTransfers.length > 0) {
-                console.log(0)
                 shouldAdd = true;
             }
         }
@@ -47,7 +46,6 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         if (!shouldAdd && !isSoldSafe) {
             const soldTransfers = await getTokenTransfers(address, soldAddress, config.chain_id);
             if (Array.isArray(soldTransfers) && soldTransfers.length > 0) {
-                console.log(1)
                 shouldAdd = true;
             }
         }

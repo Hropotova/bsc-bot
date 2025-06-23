@@ -29,11 +29,9 @@ const getAllTransactions = async (address, chain_id) => {
     }
 };
 
+// Scan API to retrieve all transactions for a given address on a specific chain.
 const getTokenTransfers = async (address, contractAddress, chain_id) => {
     try {
-        console.log('address', address);
-        console.log('contractAddress', contractAddress);
-        console.log('chain_id', chain_id)
         const response = await api.get('', {
             params: {
                 chainid: chain_id,

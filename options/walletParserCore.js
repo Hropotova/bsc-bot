@@ -56,6 +56,27 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     // Get lost swaps and transfers.
                     const {swaps, transfers} = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
 
+                    const targetHashes = [
+                        '0xeb553b8139066872b7a8b193ae8ac8208865ff75d91795df1547a78d5e3c7dce',
+                        '0xdeefa72fc5a75e1859de8d385bd284cbbf4bfd275f27cd008a4c87c44fe7fc7f',
+                        '0x0d27241e61440ad6cfa2f2566f3b27b98ac1bacaf60ef7c6e0aaee2751acbf3b',
+                        '0x4930677edbebf2ca183a17e4f30f8e05c59116b2c3fb38cc4512ee5a63efdf7a',
+                        '0x4e6a67bb8e7673be17e59f2d8ef3fde0ea906d5e9955e0ed2134dfe159b29a95',
+                        '0xce363b0d7c04dcbf18dcb378590362f412d37ae7722518d40337b546a7015f3b',
+                        '0xd145eeb9d05c7d342d99043a9b01879fcd3bab2724e700c42cae902bd54df427',
+                        '0x2ff36e5725af767e84260acc4df0464775d1df31a0fa3744ec06cbe4e98b2e33',
+                    ];
+
+                    const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
+
+                    const matchingTransactions = transactionsHistory.filter(tx =>
+                        lowerCaseHashes.includes(tx.hash.toLowerCase())
+                    );
+
+                    matchingTransactions.forEach(tx => {
+                        console.log(tx);
+                    });
+
                     const tokenData = {};
 
                     for (const swap of swaps) {
