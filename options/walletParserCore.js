@@ -73,37 +73,32 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         lowerCaseHashes.includes(tx.hash.toLowerCase())
                     );
 
-                    matchingTransactions.forEach(tx => {
-                        console.log(tx);
-                    });
+                    matchingTransactions.forEach(tx => console.log(tx));
 
                     const tokenData = {};
 
                     for (const swap of swaps) {
                         const {bought, sold, transactionType} = swap;
                         if (!bought || !sold) continue;
-
-                        const boughtSymbol = bought.symbol;
-                        const soldSymbol = sold.symbol;
                         const boughtAddress = bought.address;
                         const soldAddress = sold.address;
-
-                        // Handle BUY transactions.
                         if (transactionType === 'buy' && boughtAddress) {
                             const token = boughtAddress.toLowerCase();
-
                             if (!tokenData[token]) {
                                 tokenData[token] = {
                                     spent: 0,
-                                    received: 0,
+                                    spent_token: 0,
+                                    receive: 0,
+                                    receive_token: 0,
                                     contractAddress: boughtAddress,
                                     pairAddress: bought.pairAddress,
-                                    symbol: boughtSymbol,
+                                    symbol: bought.symbol,
                                     balance: 0,
                                     trades: []
                                 };
                             }
                             tokenData[token].spent += Math.abs(parseFloat(sold.amount));
+                            tokenData[token].spent_token += Math.abs(parseFloat(bought.amount));
                             tokenData[token].trades.push(swap);
                         }
 
@@ -114,15 +109,18 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             if (!tokenData[token]) {
                                 tokenData[token] = {
                                     spent: 0,
-                                    received: 0,
+                                    spent_token: 0,
+                                    receive: 0,
+                                    receive_token: 0,
                                     contractAddress: soldAddress,
                                     pairAddress: sold.pairAddress,
-                                    symbol: soldSymbol,
+                                    symbol: sold.symbol,
                                     balance: 0,
-                                    trades: [],
+                                    trades: []
                                 };
                             }
-                            tokenData[token].received += parseFloat(bought.amount);
+                            tokenData[token].receive += parseFloat(bought.amount);
+                            tokenData[token].receive_token += parseFloat(sold.amount);
                             tokenData[token].trades.push(swap);
                         }
                     }
@@ -161,8 +159,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     // Remove tokens with no inflow and no trades.
                     for (const [contract, stats] of Object.entries(tokenData)) {
-                        const inflowCount = transfers.filter(t => t.category === 'receive' || t.category === 'token receive').length;
-
+                        const inflowCount = transfers.filter(t => ['receive', 'token receive'].includes(t.category)).length;
                         const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                         const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
@@ -174,9 +171,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     // Filter traded tokens.
                     for (const token of [...cfg.excluded_contracts, address]) {
                         const lowerToken = token.toLowerCase();
-                        if (tokenData[lowerToken]) {
-                            delete tokenData[lowerToken];
-                        }
+                        if (tokenData[lowerToken]) delete tokenData[lowerToken];
                     }
 
                     // Merge virtual tokens.
@@ -223,11 +218,13 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     for (const [contract, stats] of Object.entries(tokenData)) {
                         let inflowCount = 0;
                         let outflowCount = 0;
-                        let diffMinutes = null
+                        let inflowTokenCount = 0;
+                        let outflowTokenCount = 0;
+                        let diffMinutes = null;
 
                         const pairStat = await getPairStats(stats.pairAddress, cfg.chain);
 
-                        if (Array.isArray(stats.trades) && stats.trades.length > 0) {
+                        if (stats.trades.length > 0) {
                             const sortedTrades = stats.trades.slice().sort(
                                 (a, b) => new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
                             );
@@ -235,15 +232,14 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             const createdTime = new Date(pairStat?.pairCreated);
                             const firstBuyTime = new Date(firstTrade.blockTimestamp);
-
-                            diffMinutes = pairStat?.pairCreated && Math.round((firstBuyTime - createdTime) / (1000 * 60));
+                            diffMinutes = pairStat?.pairCreated && Math.round((firstBuyTime - createdTime) / 60000);
                         }
 
-                        const realizedPnl = stats.balance + (stats.received - stats.spent);
-
+                        const realizedPnl = stats.balance + (stats.receive - stats.spent);
                         const allTokenContracts = [contract.toLowerCase()];
+
                         if (stats.same_contracts) {
-                            allTokenContracts.push(...Object.keys(stats.same_contracts).map(c => c));
+                            allTokenContracts.push(...Object.keys(stats.same_contracts));
                         }
 
                         const tokenTransfers = transfers.filter(i => allTokenContracts.includes(i.contract));
@@ -267,19 +263,34 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         tokenTransfers.forEach(transfer => {
-
-                            if (transfer.category === 'send' || transfer.category === 'token send') {
+                            const v = Math.abs(parseFloat(transfer.value));
+                            if (['send', 'token send'].includes(transfer.category)) {
                                 outflowCount++;
+                                outflowTokenCount += v;
                             }
-                            if (transfer.category === 'receive' || transfer.category === 'token receive') {
+                            if (['receive', 'token receive'].includes(transfer.category)) {
                                 inflowCount++;
+                                inflowTokenCount += v;
                             }
                         });
 
                         const avgHoldingHours = averageHoldingHours(stats.trades);
                         const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
 
-                        addressData.traded_tokens[contract] = {
+                        const outflowMatch = stats.spent_token > 0 &&
+                            Math.abs(outflowTokenCount - stats.spent_token) <= stats.spent_token * 0.1;
+                        const inflowMatch = stats.receive_token > 0 &&
+                            Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
+
+                        const counterparties = [...new Set(
+                            transfers
+                                .filter(t => allTokenContracts.includes(t.contract))
+                                .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
+                        )];
+
+                        console.log(`Checking ${contract}: outflowMatch=${outflowMatch}, inflowMatch=${inflowMatch}, counterparties=${counterparties.length}`);
+
+                        const tokenEntry = {
                             symbol: stats.symbol,
                             spent: Number(stats.spent.toFixed(2)),
                             roi_pct_token: roiPctToken,
@@ -287,7 +298,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             is_roi_calculated: isRoiCalculated,
                             pnl: {
                                 total: Number(realizedPnl.toFixed(2)),
-                                realized: Number(stats.received.toFixed(2)),
+                                realized: Number(stats.receive.toFixed(2)),
                                 unrealized: Number(stats.balance.toFixed(2)),
                             },
                             avg_holding_hours: avgHoldingHours,
@@ -301,38 +312,73 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 buy_count: buyCount,
                                 sell_count: sellCount,
                             },
-                            ...((buyCount > 0 && stats.received === 0 && stats.balance === 0 && outflowCount === 0) && {
+                            ...((buyCount > 0 && stats.receive === 0 && stats.balance === 0 && outflowCount === 0) && {
                                 note: 'excluded from ROI/accuracy due to zero cost basis'
                             }),
-                            ...(stats.same_contracts) && {
-                                same_contracts: stats.same_contracts,
-
-                            }
+                            ...(stats.same_contracts && {same_contracts: stats.same_contracts})
                         };
+
+                        if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
+                            const counterparty = counterparties[0];
+
+                            console.log(`Triggering counterparty analysis for ${contract} → ${counterparty}`);
+
+                            const subHistory = await getWalletHistory(counterparty, cfg.chain);
+                            const {swaps: subSwaps, transfers: subTransfers} = await createHistorySwaps(
+                                cfg, counterparty, subHistory, usdPrice
+                            );
+                            console.log('subTransfers', subTransfers)
+                            const subTransfersForContract = subTransfers.filter(t =>
+                                t?.contract?.toLowerCase() === contract?.toLowerCase()
+                            );
+                            const subSwapsForContract = subSwaps.filter(s =>
+                                s?.bought?.address?.toLowerCase() === contract?.toLowerCase() ||
+                                s?.sold?.address?.toLowerCase() === contract?.toLowerCase()
+                            );
+                            let subOutflow = 0, subInflow = 0;
+                            subTransfersForContract.forEach(t => {
+                                const v = Math.abs(parseFloat(t?.value));
+                                if (['send', 'token send'].includes(t?.category)) subOutflow += v;
+                                else subInflow += v;
+                            });
+
+                            console.log(`Counterparty ${counterparty} stats for ${contract}: outflow=${subOutflow.toFixed(4)}, inflow=${subInflow.toFixed(4)}, swaps=${subSwapsForContract.length}, transfers=${subTransfersForContract.length}`);
+
+                            tokenEntry.counterparty = {
+                                address: counterparty,
+                                transfer_count: subTransfersForContract.length + subSwapsForContract.length,
+                                outflow_token: Number(subOutflow.toFixed(4)),
+                                inflow_token: Number(subInflow.toFixed(4)),
+                                swaps_count: subSwapsForContract.length,
+                                transfers_count: subTransfersForContract.length
+                            };
+                        }
+
+                        addressData.traded_tokens[contract] = tokenEntry;
                     }
 
                     const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
 
                     addressData.average_pnl = Number(overallAverage.toFixed(2));
-                    addressData.roi_pct = sumSpentForROI > 0 ? `${Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0))}%` : null;
+                    addressData.roi_pct = sumSpentForROI > 0
+                        ? `${Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0))}%` : null;
 
-                    const tokens = Object.values(addressData.traded_tokens);
-                    const validTokens = tokens.filter(t => t.spent > 0);
-                    const totalSpent = validTokens.reduce((sum, t) => sum + t.spent, 0);
+                    const tokens = Object.values(addressData?.traded_tokens);
+                    const validTokens = tokens.filter(t => t?.spent > 0);
+                    const totalSpent = validTokens.reduce((sum, t) => sum + t?.spent, 0);
 
                     const token_accuracy_pct = validTokens.length
-                        ? (validTokens.filter(t => t.pnl.total > 0).length / validTokens.length) * 100
-                        : null;
+                        ? (validTokens.filter(t => t?.pnl?.total > 0).length / validTokens.length) * 100 : null;
 
                     const avg_token_roi_pct = validTokens.length
-                        ? validTokens.reduce((sum, t) => sum + (t.pnl.total / t.spent) * 100, 0) / validTokens.length
-                        : null;
+                        ? validTokens.reduce((sum, t) => sum + (t.pnl.total / t.spent) * 100, 0) / validTokens.length : null;
 
                     let roi_consistency_score = null;
                     if (validTokens.length >= 2) {
                         const roiValues = validTokens.map(t => (t.pnl.total / t.spent) * 100);
                         const mean = roiValues.reduce((a, b) => a + b, 0) / roiValues.length;
-                        const variance = roiValues.reduce((a, b) => a + (b - mean) ** 2, 0) / (roiValues.length - 1);
+                        const variance = roiValues
+                            .reduce((a, b) => a + (b - mean) ** 2, 0) / (roiValues.length - 1);
                         const sd = Math.sqrt(variance);
                         const cv = sd / mean;
                         roi_consistency_score = Math.max(0, Math.min(10, 10 - cv * 2));
@@ -420,7 +466,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 const aggPath = path.join(aggDir, `${address}_multichain.json`);
 
                 fs.writeFileSync(aggPath, JSON.stringify(aggregated, null, 2));
-
 
                 await bot.sendDocument(chatId, aggPath, {caption: `\`${address}\``, parse_mode: 'Markdown'});
 

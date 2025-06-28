@@ -329,33 +329,33 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             swapsArray.push({
                 transactionType,
                 typeSwap,
-                blockTimestamp: tx.block_timestamp,
-                transactionHash: tx.hash,
-                from: tx.from_address,
-                to: tx.to_address,
-                summary: tx.summary,
-                category: tx.category,
+                blockTimestamp: tx?.block_timestamp,
+                transactionHash: tx?.hash,
+                from: tx?.from_address,
+                to: tx?.to_address,
+                summary: tx?.summary,
+                category: tx?.category,
                 bought,
                 sold
             });
         } else if (tx.category === 'send' || tx.category === 'receive' || tx.category === 'token send' || tx.category === 'token receive') {
             const transfer = tx.erc20_transfers[0];
             transfersArray.push({
-                transactionHash: tx.hash,
+                transactionHash: tx?.hash,
                 tokenSymbol: transfer?.token_symbol,
                 blockTimestamp: tx.block_timestamp,
-                value: tx.value,
+                value: tx?.erc20_transfers[0]?.value_formatted,
                 contract: transfer?.address,
-                summary: tx.summary,
-                category: tx.category,
-                from: tx.from_address,
-                to: tx.to_address,
+                summary: tx?.summary,
+                category: tx?.category,
+                from: tx?.from_address,
+                to: tx?.to_address,
             });
         }
     }
 
     // Check lost swaps in transfers.
-    const { swaps, transfers } = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray);
+    const {swaps, transfers} = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray);
 
     return {
         swaps,
