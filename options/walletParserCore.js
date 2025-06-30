@@ -7,7 +7,6 @@ const {
     getActiveWalletChains,
     getTokenPrice,
     getWalletHistory,
-    getPairStats
 } = require('../api/moralis');
 const {getAllTransactions} = require('../api/scan');
 const {getDexscreenerTokenPrice} = require('../api/dexscreener');
@@ -21,6 +20,20 @@ const {
 } = require('../controlers');
 
 const config = require('../config.js');
+
+const getPairCreatedAtWithHighestLiquidity = (pairs) => {
+    if (!Array.isArray(pairs) || pairs.length === 0) return null;
+
+    let highestLiquidityPair = pairs[0];
+
+    for (const pair of pairs) {
+        if (pair.liquidity?.usd > highestLiquidityPair.liquidity?.usd) {
+            highestLiquidityPair = pair;
+        }
+    }
+
+    return highestLiquidityPair.pairCreatedAt;
+}
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
@@ -225,7 +238,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         let outflowCount = 0;
                         let diffMinutes = null
 
-                        const pairStat = await getPairStats(stats.pairAddress, cfg.chain);
+                        const pairStat = await await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
+
+                        const pairCreatedAt = getPairCreatedAtWithHighestLiquidity(pairStat);
 
                         if (Array.isArray(stats.trades) && stats.trades.length > 0) {
                             const sortedTrades = stats.trades.slice().sort(
@@ -233,10 +248,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             );
                             const firstTrade = sortedTrades[0];
 
-                            const createdTime = new Date(pairStat?.pairCreated);
+                            const createdTime = new Date(pairCreatedAt);
                             const firstBuyTime = new Date(firstTrade.blockTimestamp);
 
-                            diffMinutes = pairStat?.pairCreated && Math.round((firstBuyTime - createdTime) / (1000 * 60));
+                            diffMinutes = pairCreatedAt && Math.round((firstBuyTime - createdTime) / (1000 * 60));
                         }
 
                         const realizedPnl = stats.balance + (stats.received - stats.spent);

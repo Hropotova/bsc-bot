@@ -121,20 +121,7 @@ const getTokenPrice = async (token, chain, block) => {
     }
 };
 
-// Get the pair stats by using pair address.
-const getPairStats = async (address, chain) => {
-    const url = `pairs/${address}/stats?chain=${chain}`;
-    try {
-        const response = await api.get(url);
-        return response.data;
-    } catch (error) {
-        console.error(`Error fetching pair data ${address}:`, error?.data?.message);
-        return null;
-    }
-};
-
 module.exports = {
-    getPairStats,
     getTokenPrice,
     getWalletHistory,
     getWalletTokenSwaps,
