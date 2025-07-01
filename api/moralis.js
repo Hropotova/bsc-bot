@@ -11,6 +11,7 @@ const api = axios.create({
 
 // Get all swap related transactions (buy, sell).
 const getWalletTokenSwaps = async (address, chain) => {
+    console.log('getWalletTokenSwaps', address)
     try {
         let cursor = null;
         let allSwaps = [];
@@ -36,6 +37,8 @@ const getWalletTokenSwaps = async (address, chain) => {
 
 // Retrieve the full transaction history of a specified wallet address, including sends, receives, token.
 const getWalletHistory = async (address, chain) => {
+    console.log('getWalletHistory', address)
+
     try {
         let cursor = null;
         let allTransactions = [];

@@ -251,24 +251,36 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     // Нова логіка: якщо єдиний контрагент — підтягуємо його свапи/трансфери по цьому токену
                     if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
-                        const counterparty = counterparties[0]?.toLowerCase();
-                        const cpHistory = await getWalletHistory(counterparty, cfg.chain);
-                        const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
-                            await createHistorySwaps(cfg, counterparty, cpHistory, usdPrice);
+                        const pairDexStat = await getDexscreenerTokenPrice(counterparties[0], cfg.dexscreener_chain_id);
+                        const dataMoralisPrice = await getTokenPrice(counterparties[0], cfg.chain);
+                        const hasDexData    = pairDexStat.length > 0;
+                        const hasMoralisUsd = Boolean(dataMoralisPrice);
 
-                        const cpSwaps = cpSwapsAll.filter(
-                            (s) =>
-                                s.bought.address?.toLowerCase() === contract ||
-                                s.sold.address?.toLowerCase() === contract
-                        );
-                        const cpTransfers = cpTransfersAll.filter(
-                            (t) => t.contract?.toLowerCase() === contract
-                        );
+                        console.log('hasDexData', hasDexData);
+                        console.log('hasMoralisUsd', hasMoralisUsd);
 
-                        // додаємо до trades і зберігаємо дочірні записи
-                        stats.trades.push(...cpSwaps);
-                        stats.child_swaps = cpSwaps;
-                        stats.child_transfers = cpTransfers;
+                        if (!hasDexData && !hasMoralisUsd) {
+                            const counterparty = counterparties[0]?.toLowerCase();
+                            const cpHistory = await getWalletHistory(counterparty, cfg.chain);
+                            const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
+                                await createHistorySwaps(cfg, counterparty, cpHistory, usdPrice);
+                            console.log('address', address);
+                            console.log('counterparty', counterparty);
+                            console.log('contract', contract)
+                            const cpSwaps = cpSwapsAll.filter(
+                                (s) =>
+                                    s.bought.address?.toLowerCase() === contract ||
+                                    s.sold.address?.toLowerCase() === contract
+                            );
+                            const cpTransfers = cpTransfersAll.filter(
+                                (t) => t.contract?.toLowerCase() === contract
+                            );
+
+                            // додаємо до trades і зберігаємо дочірні записи
+                            stats.trades.push(...cpSwaps);
+                            stats.child_swaps = cpSwaps;
+                            stats.child_transfers = cpTransfers;
+                        }
                     }
 
                     const avgHrs = averageHoldingHours(stats.trades);
