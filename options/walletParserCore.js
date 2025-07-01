@@ -108,7 +108,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             if (!tokenData[token]) {
                                 tokenData[token] = {
                                     spent: 0,
+                                    spent_token: 0,
                                     received: 0,
+                                    receive_token: 0,
                                     contractAddress: boughtAddress,
                                     pairAddress: bought.pairAddress,
                                     symbol: boughtSymbol,
@@ -117,6 +119,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 };
                             }
                             tokenData[token].spent += Math.abs(parseFloat(sold.amount));
+                            tokenData[token].spent_token += Math.abs(parseFloat(bought.amount));
                             tokenData[token].trades.push(swap);
                         }
 
@@ -127,7 +130,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             if (!tokenData[token]) {
                                 tokenData[token] = {
                                     spent: 0,
+                                    spent_token: 0,
                                     received: 0,
+                                    receive_token: 0,
                                     contractAddress: soldAddress,
                                     pairAddress: sold.pairAddress,
                                     symbol: soldSymbol,
@@ -136,6 +141,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 };
                             }
                             tokenData[token].received += parseFloat(bought.amount);
+                            tokenData[token].receive_token += Math.abs(parseFloat(sold.amount));
                             tokenData[token].trades.push(swap);
                         }
                     }
@@ -236,7 +242,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     for (const [contract, stats] of Object.entries(tokenData)) {
                         let inflowCount = 0;
                         let outflowCount = 0;
-                        let diffMinutes = null
+                        let inflowTokenCount = 0;
+                        let outflowTokenCount = 0;
+                        let diffMinutes = null;
 
                         const pairStat = await await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
 
@@ -280,19 +288,41 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             sumSpentForROI += stats.spent;
                             sumPnLForROI += realizedPnl;
                         }
-
                         tokenTransfers.forEach(transfer => {
-
-                            if (transfer.category === 'send' || transfer.category === 'token send') {
+                            const v = Math.abs(parseFloat(transfer.value));
+                            if (['send', 'token send'].includes(transfer.category)) {
                                 outflowCount++;
+                                outflowTokenCount += v;
                             }
-                            if (transfer.category === 'receive' || transfer.category === 'token receive') {
+                            if (['receive', 'token receive'].includes(transfer.category)) {
                                 inflowCount++;
+                                inflowTokenCount += v;
                             }
                         });
 
                         const avgHoldingHours = averageHoldingHours(stats.trades);
                         const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
+
+                        const outflowMatch = stats.spent_token > 0 &&
+                            Math.abs(outflowTokenCount - stats.spent_token) <= stats.spent_token * 0.1;
+                        const inflowMatch = stats.receive_token > 0 &&
+                            Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
+
+                        const counterparties = [...new Set(
+                            transfers
+                                .filter(t => allTokenContracts.includes(t.contract))
+                                .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
+                        )];
+
+                        console.log('contract', contract)
+                        console.log('outflowMatch', outflowMatch)
+                        console.log('inflowMatch', inflowMatch)
+                        console.log('counterparties.length', counterparties.length)
+
+                        if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
+                            const counterparty = counterparties[0];
+                            console.log('counterparty', counterparty)
+                        }
 
                         addressData.traded_tokens[contract] = {
                             symbol: stats.symbol,
