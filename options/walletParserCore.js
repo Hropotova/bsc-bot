@@ -93,7 +93,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     let allSwaps = [...swaps];
                     let allTransfers = [...transfers];
 
-// 2) Будуємо початкову статистику по токенах (щоб знати spent_token/receive_token)
                     const initialStats = {};
                     for (const swap of swaps) {
                         const {bought, sold, transactionType} = swap;
@@ -109,9 +108,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
                     }
 
-// 3) Для кожного контракту перевіряємо outflow/inflow і, якщо match, підтягуємо дані контрагента
                     for (const [contract, stats] of Object.entries(initialStats)) {
-                        // фільтруємо тільки трансфери по цьому контракту
                         const contractTransfers = allTransfers.filter(t => t.contract?.toLowerCase() === contract);
 
                         let inflowTokenCount = 0;
@@ -127,7 +124,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const inflowMatch = stats.receive_token > 0
                             && Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
 
-                        // знаходимо унікальних контрагентів лише по цьому контракту
                         const counterparties = [...new Set(
                             transfers
                                 .filter(t => t.contract?.toLowerCase() === contract)
@@ -140,12 +136,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const moralisUsd = await getTokenPrice(cp, cfg.chain);
 
                             if ((!Array.isArray(dexData) || dexData.length === 0) && !moralisUsd) {
-                                // підтягуємо повну історію контрагента
                                 const cpHistory = await getWalletHistory(cp, cfg.chain);
                                 const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
                                     await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
 
-                                // фільтруємо по тому ж контракту
                                 const cpSwaps = cpSwapsAll.filter(s =>
                                     s.bought.address?.toLowerCase() === contract ||
                                     s.sold.address?.toLowerCase() === contract
@@ -154,14 +148,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     t.contract?.toLowerCase() === contract
                                 );
 
-                                // додаємо в загальні масиви
                                 allSwaps.push(...cpSwaps);
                                 allTransfers.push(...cpTransfers);
                             }
                         }
                     }
 
-// 4) І нарешті — запускаємо вашу стандартну побудову tokenData і розрахунок PnL/ROI
                     const tokenData = {};
                     for (const swap of allSwaps) {
                         const {bought, sold, transactionType} = swap;
