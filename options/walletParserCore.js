@@ -90,9 +90,80 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         console.log(tx);
                     });
 
-                    const tokenData = {};
+                    let allSwaps = [...swaps];
+                    let allTransfers = [...transfers];
 
+// 2) Будуємо початкову статистику по токенах (щоб знати spent_token/receive_token)
+                    const initialStats = {};
                     for (const swap of swaps) {
+                        const {bought, sold, transactionType} = swap;
+                        if (transactionType === 'buy' && bought.address) {
+                            const key = bought.address.toLowerCase();
+                            initialStats[key] ??= {spent_token: 0, receive_token: 0};
+                            initialStats[key].spent_token += Math.abs(parseFloat(bought.amount));
+                        }
+                        if (transactionType === 'sell' && sold.address) {
+                            const key = sold.address.toLowerCase();
+                            initialStats[key] ??= {spent_token: 0, receive_token: 0};
+                            initialStats[key].receive_token += Math.abs(parseFloat(sold.amount));
+                        }
+                    }
+
+// 3) Для кожного контракту перевіряємо outflow/inflow і, якщо match, підтягуємо дані контрагента
+                    for (const [contract, stats] of Object.entries(initialStats)) {
+                        // фільтруємо тільки трансфери по цьому контракту
+                        const contractTransfers = allTransfers.filter(t => t.contract?.toLowerCase() === contract);
+
+                        let inflowTokenCount = 0;
+                        let outflowTokenCount = 0;
+                        contractTransfers.forEach(t => {
+                            const v = Math.abs(parseFloat(t.value));
+                            if (['send', 'token send'].includes(t.category)) outflowTokenCount += v;
+                            if (['receive', 'token receive'].includes(t.category)) inflowTokenCount += v;
+                        });
+
+                        const outflowMatch = stats.spent_token > 0
+                            && Math.abs(outflowTokenCount - stats.spent_token) <= stats.spent_token * 0.1;
+                        const inflowMatch = stats.receive_token > 0
+                            && Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
+
+                        // знаходимо унікальних контрагентів лише по цьому контракту
+                        const counterparties = [...new Set(
+                            transfers
+                                .filter(t => t.contract?.toLowerCase() === contract)
+                                .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
+                        )];
+
+                        if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
+                            const cp = counterparties[0];
+                            const dexData = await getDexscreenerTokenPrice(cp, cfg.dexscreener_chain_id);
+                            const moralisUsd = await getTokenPrice(cp, cfg.chain);
+
+                            if ((!Array.isArray(dexData) || dexData.length === 0) && !moralisUsd) {
+                                // підтягуємо повну історію контрагента
+                                const cpHistory = await getWalletHistory(cp, cfg.chain);
+                                const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
+                                    await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
+
+                                // фільтруємо по тому ж контракту
+                                const cpSwaps = cpSwapsAll.filter(s =>
+                                    s.bought.address?.toLowerCase() === contract ||
+                                    s.sold.address?.toLowerCase() === contract
+                                );
+                                const cpTransfers = cpTransfersAll.filter(t =>
+                                    t.contract?.toLowerCase() === contract
+                                );
+
+                                // додаємо в загальні масиви
+                                allSwaps.push(...cpSwaps);
+                                allTransfers.push(...cpTransfers);
+                            }
+                        }
+                    }
+
+// 4) І нарешті — запускаємо вашу стандартну побудову tokenData і розрахунок PnL/ROI
+                    const tokenData = {};
+                    for (const swap of allSwaps) {
                         const {bought, sold, transactionType} = swap;
                         if (!bought || !sold) continue;
 
@@ -288,6 +359,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             sumSpentForROI += stats.spent;
                             sumPnLForROI += realizedPnl;
                         }
+
                         tokenTransfers.forEach(transfer => {
                             const v = Math.abs(parseFloat(transfer.value));
                             if (['send', 'token send'].includes(transfer.category)) {
@@ -302,27 +374,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         const avgHoldingHours = averageHoldingHours(stats.trades);
                         const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
-
-                        const outflowMatch = stats.spent_token > 0 &&
-                            Math.abs(outflowTokenCount - stats.spent_token) <= stats.spent_token * 0.1;
-                        const inflowMatch = stats.receive_token > 0 &&
-                            Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
-
-                        const counterparties = [...new Set(
-                            transfers
-                                .filter(t => allTokenContracts.includes(t.contract))
-                                .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
-                        )];
-
-                        console.log('contract', contract)
-                        console.log('outflowMatch', outflowMatch)
-                        console.log('inflowMatch', inflowMatch)
-                        console.log('counterparties.length', counterparties.length)
-
-                        if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
-                            const counterparty = counterparties[0];
-                            console.log('counterparty', counterparty)
-                        }
 
                         addressData.traded_tokens[contract] = {
                             symbol: stats.symbol,
