@@ -92,7 +92,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     let allSwaps = [...swaps];
                     let allTransfers = [...transfers];
-
+                    console.log('transfers', transfers)
                     const initialStats = {};
                     for (const swap of swaps) {
                         const {bought, sold, transactionType} = swap;
@@ -123,31 +123,40 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             && Math.abs(outflowTokenCount - stats.spent_token) <= stats.spent_token * 0.1;
                         const inflowMatch = stats.receive_token > 0
                             && Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
-
                         const counterparties = [...new Set(
                             transfers
                                 .filter(t => t.contract?.toLowerCase() === contract)
                                 .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
                         )];
+                        console.log('outflowMatch', outflowMatch)
+                        console.log('inflowMatch', inflowMatch)
+                        console.log('counterparties.length ', counterparties.length)
 
                         if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
                             const cp = counterparties[0];
-                            const dexData = await getDexscreenerTokenPrice(cp, cfg.dexscreener_chain_id);
-                            const moralisUsd = await getTokenPrice(cp, cfg.chain);
+                            console.log('counterparty', counterparties[0])
 
-                            if ((!Array.isArray(dexData) || dexData.length === 0) && !moralisUsd) {
+                            const pairDexStat = await getDexscreenerTokenPrice(cp, cfg.dexscreener_chain_id);
+                            const dataMoralisPrice = await getTokenPrice(cp, cfg.chain);
+                            const hasDexData = pairDexStat.length > 0;
+                            const hasMoralisUsd = Boolean(dataMoralisPrice);
+
+                            if (!hasDexData && !hasMoralisUsd) {
                                 const cpHistory = await getWalletHistory(cp, cfg.chain);
+                                console.log('cpHistory', cpHistory.length)
                                 const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
                                     await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
-
+                                console.log('cpSwapsAll', cpSwapsAll.length)
+                                console.log('cpTransfersAll', cpTransfersAll.length)
                                 const cpSwaps = cpSwapsAll.filter(s =>
-                                    s.bought.address?.toLowerCase() === contract ||
-                                    s.sold.address?.toLowerCase() === contract
+                                    s.bought.address?.toLowerCase() === contract?.toLowerCase() ||
+                                    s.sold.address?.toLowerCase() === contract?.toLowerCase()
                                 );
                                 const cpTransfers = cpTransfersAll.filter(t =>
-                                    t.contract?.toLowerCase() === contract
+                                    t.contract?.toLowerCase() === contract?.toLowerCase()
                                 );
-
+                                console.log('cpSwaps', cpSwaps)
+                                console.log('cpTransfers', cpTransfers)
                                 allSwaps.push(...cpSwaps);
                                 allTransfers.push(...cpTransfers);
                             }
