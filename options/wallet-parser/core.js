@@ -152,6 +152,71 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 t.contract?.toLowerCase() === contract.toLowerCase()
                             );
 
+                            const cpBuySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
+
+                            const totalSentToParent = allCpTransfers
+                                .filter(t =>
+                                    t.contract?.toLowerCase() === contract.toLowerCase() &&
+                                    t.from?.toLowerCase() === cp &&
+                                    t.to?.toLowerCase() === address.toLowerCase()
+                                )
+                                .reduce((sum, t) => sum + Math.abs(parseFloat(t.value)), 0);
+
+                            if (cpSwaps.length === 1) {
+
+                                const onlySwap = {...cpSwaps[0]};
+
+                                const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
+                                const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
+
+                                const ratio = totalSentToParent / originalBought;
+
+                                const newEth = originalEth * ratio;
+
+                                onlySwap.sold.amount = newEth.toString();
+                                onlySwap.bought.amount = totalSentToParent.toString();
+
+                                allSwaps.push(onlySwap);
+
+                                continue;
+                            }
+
+                            if (cpSwaps.length > 1) {
+
+                                const firstSwap = {...cpSwaps[0]};
+                                const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
+
+                                if (totalSentToParent < firstBought) {
+                                    const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
+                                    const ratio = totalSentToParent / firstBought;
+                                    const newEth = originalEth * ratio;
+
+                                    firstSwap.sold.amount = newEth.toString();
+                                    firstSwap.bought.amount = totalSentToParent.toString();
+
+                                    allSwaps.push(firstSwap);
+                                } else {
+                                    const buySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
+                                    const sumBought = buySwaps.reduce((sum, s) =>
+                                        sum + Math.abs(parseFloat(s.bought.amount)), 0
+                                    );
+                                    const ratioAll = totalSentToParent / sumBought;
+
+                                    buySwaps.forEach(s => {
+                                        const clone = {...s};
+                                        const origSold = Math.abs(parseFloat(clone.sold.amount));
+                                        const origBought = Math.abs(parseFloat(clone.bought.amount));
+
+                                        clone.sold.amount = (origSold * ratioAll).toString();
+                                        clone.bought.amount = (origBought * ratioAll).toString();
+
+                                        allSwaps.push(clone);
+                                    });
+                                }
+
+                                continue;
+                            }
+
                             let outAmt = 0, inAmt = 0;
                             allTransfers
                                 .filter(t => t.contract?.toLowerCase() === contract.toLowerCase())
@@ -433,7 +498,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         addressData.traded_tokens[contract] = {
                             symbol: stats.symbol,
-                            spent: Number(stats.spent.toFixed(2)),
+                            spent: Number(stats.spent.toFixed(3)),
                             roi_pct_token: roiPctToken,
                             is_profitable: isProfitable,
                             is_roi_calculated: isRoiCalculated,
