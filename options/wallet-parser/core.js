@@ -7,9 +7,10 @@ const {
     getActiveWalletChains,
     getTokenPrice,
     getWalletHistory,
-} = require('../api/moralis');
-const {getAllTransactions} = require('../api/scan');
-const {getDexscreenerTokenPrice} = require('../api/dexscreener');
+} = require('../../api/moralis');
+const {getCode} = require('../../api/moralis-rpc');
+const {getAllTransactions} = require('../../api/scan');
+const {getDexscreenerTokenPrice} = require('../../api/dexscreener');
 
 const {
     createHistorySwaps,
@@ -17,9 +18,9 @@ const {
     associatedAddresses,
     averageHoldingHours,
     mergeVirtualTokens,
-} = require('../controlers');
+} = require('../../controlers');
 
-const config = require('../config.js');
+const config = require('../../config.js');
 
 const getPairCreatedAtWithHighestLiquidity = (pairs) => {
     if (!Array.isArray(pairs) || pairs.length === 0) return null;
@@ -131,12 +132,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
                             const cp = counterparties[0];
 
-                            const pairDexStat = await getDexscreenerTokenPrice(cp, cfg.dexscreener_chain_id);
-                            const dataMoralisPrice = await getTokenPrice(cp, cfg.chain);
-                            const hasDexData = pairDexStat.length > 0;
-                            const hasMoralisUsd = Boolean(dataMoralisPrice);
+                            const addressCode = await getCode(cp, cfg.rpc_url, cfg.chain);
 
-                            if (!hasDexData && !hasMoralisUsd) {
+                            if (addressCode === '0x') {
                                 const cpHistory = await getWalletHistory(cp, cfg.chain);
                                 const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
                                     await createHistorySwaps(cfg, cp, cpHistory, usdPrice);

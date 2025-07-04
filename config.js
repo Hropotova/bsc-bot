@@ -1,4 +1,11 @@
 // chains.js
+require('dotenv').config();
+
+const rpcEthUrl = process.env.MORALIS_RPC_ETH_URL;
+const rpcBaseUrl = process.env.MORALIS_RPC_BASE_URL;
+const rpcBscUrl = process.env.MORALIS_RPC_BSC_URL;
+const rpcAvalancheUrl = process.env.MORALIS_RPC_AVALANCHE_URL;
+
 module.exports = {
     eth: {
         chain: 'eth',
@@ -7,6 +14,7 @@ module.exports = {
         contract: '0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2',
         trade_symbol: 'WETH',
         symbol: 'ETH',
+        rpc_url: rpcEthUrl,
         stable_coins: [
             '0xdac17f958d2ee523a2206206994597c13d831ec7',
             '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
@@ -54,6 +62,7 @@ module.exports = {
         contract: '0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c',
         trade_symbol: 'WBNB',
         symbol: 'BNB',
+        rpc_url: rpcBscUrl,
         stable_coins: [
             '0x55d398326f99059ff775485246999027b3197955',
             '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
@@ -95,6 +104,7 @@ module.exports = {
         contract: '0x4200000000000000000000000000000000000006',
         trade_symbol: 'WETH',
         symbol: 'ETH',
+        rpc_url: rpcBaseUrl,
         stable_coins: [
             '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',
             '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
@@ -131,6 +141,7 @@ module.exports = {
         contract: '0xb31f66aa3c1e785363f0875a1b74e27b85fd66c7',
         trade_symbol: 'WAVAX',
         symbol: 'AVAX',
+        rpc_url: rpcAvalancheUrl,
         stable_coins: [
             '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7',
             '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e',

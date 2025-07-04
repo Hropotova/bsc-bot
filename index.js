@@ -3,7 +3,7 @@ const fs = require('fs');
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
-const {walletParserMultiChain, walletParserSingleChain} = require('./options/walletParser');
+const {walletParserMultiChain, walletParserSingleChain} = require('./options/wallet-parser');
 const config = require('./config.js');
 
 const token = process.env.TELEGRAM_TOKEN;

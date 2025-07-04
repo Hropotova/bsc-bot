@@ -1,9 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const api = axios.create({
-    baseURL: 'https://api.etherscan.io/v2/api',
-});
+const api = axios.create({baseURL: 'https://api.etherscan.io/v2/api'});
 
 // Scan API to retrieve all transactions for a given address on a specific chain.
 const getAllTransactions = async (address, chain_id) => {

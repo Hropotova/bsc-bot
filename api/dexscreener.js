@@ -3,9 +3,7 @@ const axios = require('axios');
 
 const api = axios.create({
     baseURL: 'https://api.dexscreener.com/',
-    headers: {
-        "Accept": "*/*"
-    },
+    headers: {'Accept': '*/*'},
 });
 
 const getDexscreenerTokenPrice = async (tokenAddress, chainId) => {
