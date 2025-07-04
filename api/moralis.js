@@ -11,7 +11,6 @@ const api = axios.create({
 
 // Get all swap related transactions (buy, sell).
 const getWalletTokenSwaps = async (address, chain) => {
-    console.log('getWalletTokenSwaps', address)
     try {
         let cursor = null;
         let allSwaps = [];
@@ -30,14 +29,13 @@ const getWalletTokenSwaps = async (address, chain) => {
 
         return allSwaps;
     } catch (error) {
-        console.error(`Error fetching swaps for ${address}:`, error.message);
+        console.error(`Error fetching swaps for ${address}:`, error?.request?.data?.message);
         return [];
     }
 };
 
 // Retrieve the full transaction history of a specified wallet address, including sends, receives, token.
 const getWalletHistory = async (address, chain) => {
-    console.log('getWalletHistory', address)
 
     try {
         let cursor = null;
@@ -57,7 +55,7 @@ const getWalletHistory = async (address, chain) => {
 
         return allTransactions;
     } catch (error) {
-        console.error(`Error fetching swaps for ${address}:`, error?.data?.message);
+        console.error(`Error fetching swaps for ${address}:`, error?.request?.data?.message);
         return [];
     }
 };
@@ -70,7 +68,7 @@ const getWalletTokenBalances = async (address, chain) => {
 
         return response.data.result || [];
     } catch (error) {
-        console.error(`Error fetching balance for ${address}:`, error?.data?.message);
+        console.error(`Error fetching balance for ${address}:`, error?.request?.data?.message);
         return [];
     }
 };
@@ -106,7 +104,7 @@ const getActiveWalletChains = async (address) => {
 
         return activeChains.filter(chain => chain?.first_transaction !== null || chain?.last_transaction !== null).map(chain => chain?.chain);
     } catch (error) {
-        console.error(`Error fetching active chains for ${address}:`, error?.data?.message);
+        console.error(`Error fetching active chains for ${address}:`, error?.request?.data?.message);
         return [];
     }
 };
@@ -119,7 +117,7 @@ const getTokenPrice = async (token, chain, block) => {
         const response = await api.get(url);
         return response.data;
     } catch (error) {
-        console.error(`Error fetching price for token ${token}:`, error?.data?.message);
+        console.error(`Error fetching price for token ${token}:`, error?.request?.data?.message);
         return null;
     }
 };

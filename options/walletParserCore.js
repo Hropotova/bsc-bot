@@ -92,7 +92,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                     let allSwaps = [...swaps];
                     let allTransfers = [...transfers];
-                    console.log('transfers', transfers)
                     const initialStats = {};
                     for (const swap of swaps) {
                         const {bought, sold, transactionType} = swap;
@@ -128,13 +127,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 .filter(t => t.contract?.toLowerCase() === contract)
                                 .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
                         )];
-                        console.log('outflowMatch', outflowMatch)
-                        console.log('inflowMatch', inflowMatch)
-                        console.log('counterparties.length ', counterparties.length)
 
                         if ((outflowMatch || inflowMatch) && counterparties.length === 1) {
                             const cp = counterparties[0];
-                            console.log('counterparty', counterparties[0])
 
                             const pairDexStat = await getDexscreenerTokenPrice(cp, cfg.dexscreener_chain_id);
                             const dataMoralisPrice = await getTokenPrice(cp, cfg.chain);
@@ -143,11 +138,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             if (!hasDexData && !hasMoralisUsd) {
                                 const cpHistory = await getWalletHistory(cp, cfg.chain);
-                                console.log('cpHistory', cpHistory.length)
                                 const {swaps: cpSwapsAll, transfers: cpTransfersAll} =
                                     await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
-                                console.log('cpSwapsAll', cpSwapsAll.length)
-                                console.log('cpTransfersAll', cpTransfersAll.length)
                                 const cpSwaps = cpSwapsAll.filter(s =>
                                     s.bought.address?.toLowerCase() === contract?.toLowerCase() ||
                                     s.sold.address?.toLowerCase() === contract?.toLowerCase()
@@ -155,8 +147,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 const cpTransfers = cpTransfersAll.filter(t =>
                                     t.contract?.toLowerCase() === contract?.toLowerCase()
                                 );
-                                console.log('cpSwaps', cpSwaps)
-                                console.log('cpTransfers', cpTransfers)
                                 allSwaps.push(...cpSwaps);
                                 allTransfers.push(...cpTransfers);
                             }

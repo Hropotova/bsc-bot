@@ -339,7 +339,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 sold
             });
         } else if (tx.category === 'send' || tx.category === 'receive' || tx.category === 'token send' || tx.category === 'token receive' || tx.category === 'contract interaction') {
-            console.log('tx', tx)
             const transfer = tx.erc20_transfers[0];
             const from = tx.erc20_transfers.length >0 ? tx.erc20_transfers[0].from_address : tx.from_address;
             const to = tx.erc20_transfers.length >0 ? tx.erc20_transfers[0].to_address : tx.to_address;
