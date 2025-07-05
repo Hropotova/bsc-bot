@@ -108,33 +108,14 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
                     }
 
-                    for (const [contract, stats] of Object.entries(initialStats)) {
-                        const contractTransfers = allTransfers.filter(t => t.contract?.toLowerCase() === contract);
-
-                        let inflowTokenCount = 0;
-                        let outflowTokenCount = 0;
-                        contractTransfers.forEach(t => {
-                            const v = Math.abs(parseFloat(t.value));
-                            if (['send', 'token send'].includes(t.category)) outflowTokenCount += v;
-                            if (['receive', 'token receive'].includes(t.category)) inflowTokenCount += v;
-                        });
-
-                        const outflowMatch = stats.spent_token > 0
-                            && Math.abs(outflowTokenCount - stats.spent_token) <= stats.spent_token * 0.1;
-                        const inflowMatch = stats.receive_token > 0
-                            && Math.abs(inflowTokenCount - stats.receive_token) <= stats.receive_token * 0.1;
-
+                    for (const [contract] of Object.entries(initialStats)) {
                         const counterparties = [...new Set(
                             transfers
                                 .filter(t => t.contract?.toLowerCase() === contract)
                                 .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from).toLowerCase())
                         )];
 
-
                         if (counterparties.length === 1) {
-                            console.log('inflowTokenCount', inflowTokenCount);
-                            console.log('outflowTokenCount', outflowTokenCount);
-
                             const cp = counterparties[0];
                             const code = await getCode(cp, cfg.rpc_url, cfg.chain);
                             const isEOA = code === '0x' || code === '0x0';
@@ -162,61 +143,96 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 )
                                 .reduce((sum, t) => sum + Math.abs(parseFloat(t.value)), 0);
 
-                            if (cpSwaps.length === 1) {
+                            console.log('--- Counterparty Processing Start ---');
+                            console.log('CP address:', cp);
+                            console.log('Total sent to parent:', totalSentToParent);
+                            console.log('CP swaps count:', cpSwaps.length, cpSwaps);
+                            console.log('CP transfers count:', cpTransfers.length, cpTransfers);
 
+                            // case 1: single swap
+                            if (cpBuySwaps.length === 1 && totalSentToParent > 0) {
+                                console.log('[Case 1] Single swap branch');
                                 const onlySwap = {...cpSwaps[0]};
+                                console.log('Original swap:', onlySwap);
 
                                 const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
                                 const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
+                                console.log('originalEth:', originalEth, 'originalBought:', originalBought);
 
                                 const ratio = totalSentToParent / originalBought;
+                                console.log('computed ratio:', ratio);
 
                                 const newEth = originalEth * ratio;
+                                console.log('newEth (originalEth * ratio):', newEth);
 
                                 onlySwap.sold.amount = newEth.toString();
                                 onlySwap.bought.amount = totalSentToParent.toString();
+                                console.log('Modified swap:', onlySwap);
 
                                 allSwaps.push(onlySwap);
-
+                                console.log('Pushed modified single swap, allSwaps length:', allSwaps.length);
+                                console.log('--- Counterparty Processing End (Case 1) ---');
                                 continue;
                             }
 
-                            if (cpSwaps.length > 1) {
-
+                            // case 2–4: multiple swaps
+                            if (cpBuySwaps.length > 1 && totalSentToParent > 0) {
+                                console.log('[Case 2/3/4] Multiple swaps branch');
                                 const firstSwap = {...cpSwaps[0]};
                                 const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
+                                console.log('First swap bought amount:', firstBought);
 
-                                if (totalSentToParent < firstBought) {
-                                    const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
-                                    const ratio = totalSentToParent / firstBought;
-                                    const newEth = originalEth * ratio;
+                                if (totalSentToParent >= firstBought) {
+                                    // partial/full → more than first swap
+                                    console.log('[Case 2/4] totalSent >= firstBought → using all BUY swaps');
 
-                                    firstSwap.sold.amount = newEth.toString();
-                                    firstSwap.bought.amount = totalSentToParent.toString();
-
-                                    allSwaps.push(firstSwap);
-                                } else {
                                     const buySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
                                     const sumBought = buySwaps.reduce((sum, s) =>
                                         sum + Math.abs(parseFloat(s.bought.amount)), 0
                                     );
-                                    const ratioAll = totalSentToParent / sumBought;
+                                    console.log('All buy swaps sumBought:', sumBought);
 
-                                    buySwaps.forEach(s => {
+                                    const ratioAll = totalSentToParent / sumBought;
+                                    console.log('ratioAll (totalSent/sumBought):', ratioAll);
+
+                                    buySwaps.forEach((s, idx) => {
                                         const clone = {...s};
                                         const origSold = Math.abs(parseFloat(clone.sold.amount));
                                         const origBought = Math.abs(parseFloat(clone.bought.amount));
+                                        console.log(` Swap #${idx + 1} origSold: ${origSold}, origBought: ${origBought}`);
 
                                         clone.sold.amount = (origSold * ratioAll).toString();
                                         clone.bought.amount = (origBought * ratioAll).toString();
+                                        console.log(` Swap #${idx + 1} modified:`, clone);
 
                                         allSwaps.push(clone);
                                     });
-                                }
 
+                                    console.log('Pushed all scaled buy swaps, allSwaps length:', allSwaps.length);
+                                    console.log('--- Counterparty Processing End (Case 2/4) ---');
+                                } else {
+                                    // totalSent < firstBought → scale only first swap
+                                    console.log('[Case 3] totalSent < firstBought → scaling first swap only');
+                                    const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
+                                    const ratio = totalSentToParent / firstBought;
+                                    console.log('ratio (totalSent/firstBought):', ratio);
+
+                                    const newEth = originalEth * ratio;
+                                    console.log('newEth (originalEth * ratio):', newEth);
+
+                                    firstSwap.sold.amount = newEth.toString();
+                                    firstSwap.bought.amount = totalSentToParent.toString();
+                                    console.log('Modified first swap:', firstSwap);
+
+                                    allSwaps.push(firstSwap);
+                                    console.log('Pushed modified first swap, allSwaps length:', allSwaps.length);
+                                    console.log('--- Counterparty Processing End (Case 3) ---');
+                                }
                                 continue;
                             }
 
+                            // fallback to original ratio-based matching
+                            console.log('[Fallback] Using matchSwapsByRatio logic');
                             let outAmt = 0, inAmt = 0;
                             allTransfers
                                 .filter(t => t.contract?.toLowerCase() === contract.toLowerCase())
@@ -225,32 +241,51 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     if (['send', 'token send'].includes(t.category)) outAmt += v;
                                     if (['receive', 'token receive'].includes(t.category)) inAmt += v;
                                 });
+                            console.log('Calculated outAmt:', outAmt, 'inAmt:', inAmt);
 
                             const spent = initialStats[contract].spent_token;
                             const received = initialStats[contract].receive_token;
+                            console.log('initialStats spent:', spent, 'received:', received);
+
                             const ratioOut = spent > 0 ? Math.min(1, outAmt / spent) : 0;
                             const ratioIn = spent === 0 ? Math.min(1, inAmt / received) : 0;
+                            console.log('ratioOut:', ratioOut, 'ratioIn:', ratioIn);
 
                             function matchSwapsByRatio(swaps, ratio, type) {
+                                console.log(`[matchSwapsByRatio] type=${type}, ratio=${ratio}`);
                                 const filtered = swaps.filter(s => s.transactionType === type);
-                                if (ratio === 1) return filtered;
-                                if (!filtered.length) return [];
+                                console.log(' filtered swaps:', filtered);
+
+                                if (ratio === 1) {
+                                    console.log(' Case 1: ratio=1 → return all filtered');
+                                    return filtered;
+                                }
+                                if (!filtered.length) {
+                                    console.log(' No filtered swaps → return []');
+                                    return [];
+                                }
+
                                 const total = filtered.reduce((sum, s) => {
                                     const amt = Math.abs(parseFloat(
                                         type === 'sell' ? s.sold.amount : s.bought.amount
                                     ));
                                     return sum + amt;
                                 }, 0);
+                                console.log(' total amount in filtered swaps:', total);
+
                                 let target = total * ratio, acc = 0;
+                                console.log(' target amount:', target);
                                 const sorted = filtered.sort((a, b) =>
                                     new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
                                 );
+
                                 const result = [];
                                 for (const sw of sorted) {
                                     const amt = Math.abs(parseFloat(
                                         type === 'sell' ? sw.sold.amount : sw.bought.amount
                                     ));
                                     if (amt >= target - acc) {
+                                        console.log(' Last swap covers target:', sw);
                                         const clone = {...sw};
                                         if (type === 'sell') clone.sold.amount = (target - acc).toString();
                                         else clone.bought.amount = (target - acc).toString();
@@ -259,28 +294,42 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     }
                                     result.push(sw);
                                     acc += amt;
+                                    console.log(' Accumulated:', acc);
                                 }
+
                                 if (!result.length) {
+                                    console.log(' No result → use average logic');
                                     const avg = (total * ratio) / filtered.length;
                                     const tpl = {...filtered[0]};
                                     if (type === 'sell') tpl.sold.amount = avg.toString();
                                     else tpl.bought.amount = avg.toString();
                                     return [tpl];
                                 }
+
+                                console.log(' Resulting matched swaps:', result);
                                 return result;
                             }
 
                             if (ratioOut > 0) {
-                                const matched = matchSwapsByRatio(cpSwaps, ratioOut, 'sell');
-                                allSwaps.push(...matched);
-                                if (ratioOut === 1) allTransfers.push(...cpTransfers);
+                                if (totalSentToParent > 0) {
+                                    console.log('Applying matchSwapsByRatio for SELL (no tokens sent to parent)');
+                                    const matched = matchSwapsByRatio(cpSwaps, ratioOut, 'sell');
+                                    allSwaps.push(...matched);
+                                    if (ratioOut === 1) allTransfers.push(...cpTransfers);
+                                } else {
+                                    allSwaps.push(...cpSwaps);                                }
                             } else if (ratioIn > 0) {
-                                const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
-                                allSwaps.push(...matched);
-                                if (ratioIn === 1) allTransfers.push(...cpTransfers);
+                                if (totalSentToParent > 0) {
+                                    console.log('Applying matchSwapsByRatio for BUY (no tokens sent to parent)');
+                                    const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
+                                    allSwaps.push(...matched);
+                                    if (ratioIn === 1) allTransfers.push(...cpTransfers);
+                                } else {
+                                    allSwaps.push(...cpSwaps);                                }
                             }
-                        }
 
+                            console.log('--- Counterparty Processing End (Fallback) ---');
+                        }
                     }
 
                     const tokenData = {};
@@ -434,8 +483,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     for (const [contract, stats] of Object.entries(tokenData)) {
                         let inflowCount = 0;
                         let outflowCount = 0;
-                        let inflowTokenCount = 0;
-                        let outflowTokenCount = 0;
                         let diffMinutes = null;
 
                         const pairStat = await await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
@@ -485,11 +532,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const v = Math.abs(parseFloat(transfer.value));
                             if (['send', 'token send'].includes(transfer.category)) {
                                 outflowCount++;
-                                outflowTokenCount += v;
                             }
                             if (['receive', 'token receive'].includes(transfer.category)) {
                                 inflowCount++;
-                                inflowTokenCount += v;
                             }
                         });
 
