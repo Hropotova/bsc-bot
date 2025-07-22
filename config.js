@@ -1,10 +1,10 @@
-// chains.js
 require('dotenv').config();
 
 const rpcEthUrl = process.env.MORALIS_RPC_ETH_URL;
 const rpcBaseUrl = process.env.MORALIS_RPC_BASE_URL;
 const rpcBscUrl = process.env.MORALIS_RPC_BSC_URL;
 const rpcAvalancheUrl = process.env.MORALIS_RPC_AVALANCHE_URL;
+const rpcArbitrumUrl = process.env.MORALIS_RPC_ARBITRUM_URL;
 
 module.exports = {
     eth: {
@@ -15,6 +15,7 @@ module.exports = {
         trade_symbol: 'WETH',
         symbol: 'ETH',
         rpc_url: rpcEthUrl,
+        min_transfer: 0.003,
         stable_coins: [
             '0xdac17f958d2ee523a2206206994597c13d831ec7',
             '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
@@ -63,6 +64,7 @@ module.exports = {
         trade_symbol: 'WBNB',
         symbol: 'BNB',
         rpc_url: rpcBscUrl,
+        min_transfer: 0.003,
         stable_coins: [
             '0x55d398326f99059ff775485246999027b3197955',
             '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
@@ -105,6 +107,7 @@ module.exports = {
         trade_symbol: 'WETH',
         symbol: 'ETH',
         rpc_url: rpcBaseUrl,
+        min_transfer: 0.005,
         stable_coins: [
             '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',
             '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
@@ -142,6 +145,7 @@ module.exports = {
         trade_symbol: 'WAVAX',
         symbol: 'AVAX',
         rpc_url: rpcAvalancheUrl,
+        min_transfer: 0.01,
         stable_coins: [
             '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7',
             '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e',
@@ -186,6 +190,75 @@ module.exports = {
             '0x63a72806098bd3d9520cc43356dd78afe5d386d9',
             '0x48f88a3fe843ccb0b5003e70b4192c1d7448bef0',
             '0x0555e30da8f98308edb960aa94c0db47230d2b9c',
+        ],
+    },
+    arbitrum: {
+        chain: 'arbitrum',
+        chain_id: 42161,
+        dexscreener_chain_id: 'arbitrum',
+        contract: '0x82af49447d8a07e3bd95bd0d56f35241523fbab1',
+        trade_symbol: 'WETH',
+        symbol: 'ETH',
+        rpc_url: rpcArbitrumUrl,
+        min_transfer: 0.003,
+        stable_coins: [
+            '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+            '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8',
+            '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+            '0x6491c05a82219b8d1479057361ff1654749b876b',
+            '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1',
+            '0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2',
+            '0xa6525ae43edcd03dc08e775774dcabd3bb925872',
+            '0xddb46999f8891663a8f2828d25298f70416d7610',
+            '0x940098b108fb7d0a7e374f6eded7760787464609',
+            '0x93c9932e4afa59201f0b5e63f7d816516f1669fe',
+            '0x46850ad61c2b7d64d08c9c754f45254596696984',
+            '0xf3527ef8de265eaa3716fb312c12847bfba66cef',
+            '0x35e050d3c0ec2d29d269a8ecea763a183bdf9a9d',
+            '0x35f1c5cb7fb977e669fd244c567da99d8a3a6850',
+            '0x680447595e8b7b3aa1b43beb9f6098c79ac2ab3f',
+        ],
+        excluded_contracts: [
+            '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
+            '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8',
+            '0xaf88d065e77c8cc2239327c5edb3a432268e5831',
+            '0x6491c05a82219b8d1479057361ff1654749b876b',
+            '0xda10009cbd5d07dd0cecc66161fc93d7c9000da1',
+            '0x211cc4dd073734da055fbf44a2b4667d5e5fe5d2',
+            '0xa6525ae43edcd03dc08e775774dcabd3bb925872',
+            '0xddb46999f8891663a8f2828d25298f70416d7610',
+            '0x940098b108fb7d0a7e374f6eded7760787464609',
+            '0x93c9932e4afa59201f0b5e63f7d816516f1669fe',
+            '0x46850ad61c2b7d64d08c9c754f45254596696984',
+            '0xf3527ef8de265eaa3716fb312c12847bfba66cef',
+            '0x35e050d3c0ec2d29d269a8ecea763a183bdf9a9d',
+            '0x35f1c5cb7fb977e669fd244c567da99d8a3a6850',
+            '0x680447595e8b7b3aa1b43beb9f6098c79ac2ab3f',
+            '0x2f2a2543b76a4166549f7aab2e75bef0aefc5b0f',
+            '0x0fbcbaea96ce0cf7ee00a8c19c3ab6f5dc8e1921',
+            '0xf97f4df75117a78c1a5a0dbb814af92458539fb4',
+            '0xfa7f8980b0f1e64a2062791cc3b0871572f1f7f0',
+            '0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf',
+            '0x25d887ce7a35172c62febfd67a1856f20faebb00',
+            '0x58538e6a46e07434d7e7375bc268d3cb839c0133',
+            '0x912ce59144191c1204e64559fe8253a0e49e6548',
+            '0x11cdb42b0eb46d95f990bedd4695a6e3fa034978',
+            '0x2416092f143378750bb29b79ed961ab195cceea5',
+            '0x3647c54c4c2c65bc7a2d63c0da2809b399dbbdc0',
+            '0x9623063377ad1b27544c965ccd7342f7ea7e88c7',
+            '0x1b896893dfc86bb67cf57767298b9073d2c1ba2c',
+            '0x0c880f6761f1af8d9aa9c466984b80dab9a8c9e8',
+            '0x35751007a407ca6feffe80b3cb397736d2cf4dbe',
+            '0x7f9fbf9bdd3f4105c478b996b648fe6e828a1e98',
+            '0x354a6da3fcde098f8389cad84b0182725c6c91de',
+            '0x4d15a3a2286d883af0aa1b3f21367843fac63e07',
+            '0xb0ffa8000886e57f86dd5264b9582b2ad87b2b91',
+            '0x6314c31a7a1652ce482cffe247e9cb7c3f4bb9af',
+            '0x35751007a407ca6feffe80b3cb397736d2cf4dbe',
+            '0x354a6da3fcde098f8389cad84b0182725c6c91de',
+            '0x657e8c867d8b37dcc18fa4caead9c45eb088c642',
+            '0xc87b37a581ec3257b734886d9d3a581f5a9d056c',
+            '0x6e6a3d8f1affac703b1aef1f43b8d2321be40043',
         ],
     },
 };

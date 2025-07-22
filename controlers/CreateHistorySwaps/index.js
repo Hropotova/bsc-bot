@@ -6,6 +6,14 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
     const swapsArray = [];
     const transfersArray = [];
     const virtualContract = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
+    const TX_CATEGORIES = [
+        'send',
+        'receive',
+        'token send',
+        'token receive',
+        'contract interaction'
+    ];
+
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
             const {erc20_transfers = [], native_transfers = []} = tx;
@@ -338,21 +346,24 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 bought,
                 sold
             });
-        } else if (tx.category === 'send' || tx.category === 'receive' || tx.category === 'token send' || tx.category === 'token receive' || tx.category === 'contract interaction') {
+        } else if (TX_CATEGORIES.includes(tx.category)) {
             const transfer = tx.erc20_transfers[0];
-            const from = tx.erc20_transfers.length >0 ? tx.erc20_transfers[0].from_address : tx.from_address;
-            const to = tx.erc20_transfers.length >0 ? tx.erc20_transfers[0].to_address : tx.to_address;
-            transfersArray.push({
-                transactionHash: tx?.hash,
-                tokenSymbol: transfer?.token_symbol,
-                blockTimestamp: tx.block_timestamp,
-                value: tx?.erc20_transfers[0]?.value_formatted,
-                contract: transfer?.address,
-                summary: tx?.summary,
-                category: tx?.category === 'contract interaction' ? from.toLowerCase() === address.toLowerCase() ? 'send' : 'receive' : tx?.category,
-                from,
-                to,
-            });
+            const from = tx.erc20_transfers.length > 0 ? tx.erc20_transfers[0].from_address : tx.from_address;
+            const to = tx.erc20_transfers.length > 0 ? tx.erc20_transfers[0].to_address : tx.to_address;
+
+            if ((from?.toLowerCase() === address?.toLowerCase() || to?.toLowerCase() === address?.toLowerCase()) && Number(tx?.erc20_transfers[0]?.value_formatted) > 0) {
+                transfersArray.push({
+                    transactionHash: tx?.hash,
+                    tokenSymbol: transfer?.token_symbol,
+                    blockTimestamp: tx.block_timestamp,
+                    value: tx?.erc20_transfers[0]?.value_formatted,
+                    contract: transfer?.address,
+                    summary: tx?.summary,
+                    category: tx?.category === 'contract interaction' ? from?.toLowerCase() === address?.toLowerCase() ? 'send' : 'receive' : tx?.category,
+                    from,
+                    to,
+                });
+            }
         }
     }
 
