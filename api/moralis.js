@@ -35,11 +35,12 @@ const getWalletTokenSwaps = async (address, chain) => {
 };
 
 // Retrieve the full transaction history of a specified wallet address, including sends, receives, token.
-const getWalletHistory = async (address, chain) => {
+const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+const getWalletHistory = async (address, chain) => {
     try {
         let cursor = null;
-        let allTransactions = [];
+        const allTransactions = [];
 
         while (true) {
             const url = `wallets/${address}/history?chain=${chain}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
@@ -49,16 +50,22 @@ const getWalletHistory = async (address, chain) => {
 
             allTransactions.push(...transactions);
 
-            if (!data.cursor || transactions.length < 100) break;
+            if (!data.cursor || transactions.length < 100) {
+                break;
+            }
+
             cursor = data.cursor;
+
+            await delay(5000);
         }
 
         return allTransactions;
     } catch (error) {
-        console.error(`Error fetching swaps for ${address}:`, error.response?.data?.message);
+        console.error(`Error fetching history for ${address}:`, error.response?.data?.message || error.message);
         return [];
     }
 };
+
 
 // Get token balances for a specific wallet address and their token prices in USD.
 const getWalletTokenBalances = async (address, chain) => {

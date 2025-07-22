@@ -88,6 +88,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     let allSwaps = [...swaps];
                     let allTransfers = [...transfers];
                     const initialStats = {};
+
                     for (const swap of swaps) {
                         const {bought, sold, transactionType} = swap;
                         if (transactionType === 'buy' && bought.address) {
@@ -118,8 +119,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
 
                             if (cPtransactions.length < process.env.TRANSACTIONS_COUNT) {
-
                                 const cpHistory = await getWalletHistory(cp, cfg.chain);
+
                                 const {swaps: allCpSwaps, transfers: allCpTransfers} =
                                     await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
 
@@ -351,6 +352,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         return `${intPart}${fracPart ? '.' + fracPart : ''}`;
                     }
 
+
                     for (const token of balances) {
                         const addr = token.token_address;
                         if (!tokenData[addr]) continue;
@@ -429,6 +431,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     let sumSpentForROI = 0;
                     let sumPnLForROI = 0;
 
+
                     for (const [contract, stats] of Object.entries(tokenData)) {
                         let inflowCount = 0;
                         let outflowCount = 0;
@@ -487,6 +490,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         });
 
+
                         const avgHoldingHours = averageHoldingHours(stats.trades);
                         const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
 
@@ -521,6 +525,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         };
                     }
+
 
                     const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
 
