@@ -17,7 +17,7 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         const hash = swap.transactionHash.toLowerCase();
         if (existingSwapHashes.has(hash)) continue;
 
-        const { bought, sold } = swap;
+        const {bought, sold} = swap;
 
         const boughtAddress = bought.address.toLowerCase();
         const soldAddress = sold.address.toLowerCase();
@@ -55,10 +55,28 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         }
     }
 
-    const updatedSwapsArray = [...swapsArray, ...validatedSwaps];
+    const allSwaps = [...swapsArray, ...validatedSwaps];
+
+    const uniqueSwapsMap = new Map();
+
+    for (const swap of allSwaps) {
+        const hash = swap.transactionHash.toLowerCase();
+
+        const hasWETH =
+            swap?.bought?.symbol?.toUpperCase() === config.trade_symbol ||
+            swap?.sold?.symbol?.toUpperCase() === config.trade_symbol;
+
+        if (!uniqueSwapsMap.has(hash)) {
+            uniqueSwapsMap.set(hash, hasWETH ? swap : null);
+        } else if (hasWETH) {
+            uniqueSwapsMap.set(hash, swap);
+        }
+    }
+
+    const deduplicatedSwaps = Array.from(uniqueSwapsMap.values()).filter(Boolean);
 
     return {
-        swaps: updatedSwapsArray,
+        swaps: deduplicatedSwaps,
         transfers: filteredTransfers
     };
 };
