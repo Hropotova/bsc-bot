@@ -238,7 +238,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         let outflowCount = 0;
                         let diffMinutes = null
 
-                        const pairStat = await await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
+                        const pairStat = await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
 
                         const pairCreatedAt = getPairCreatedAtWithHighestLiquidity(pairStat);
 
