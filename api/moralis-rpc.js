@@ -10,13 +10,14 @@ const api = axios.create({
 
 const getCode = async (address, rpcUrl, chain) => {
     try {
+        console.log(`Fetching code for ${address}`);
         const response = await api.post(rpcUrl, {
             jsonrpc: '2.0',
             id: 1,
             method: 'eth_getCode',
             params: [address, 'latest']
         });
-
+        console.log(`Code fetched for ${address}`);
         return response.data.result;
     } catch (err) {
         console.error(`Error fetching ${chain} node:`, err);
