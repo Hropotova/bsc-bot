@@ -12,7 +12,7 @@ const api = axios.create({
 // Get all swap related transactions (buy, sell).
 const getWalletTokenSwaps = async (address, chain) => {
     try {
-        console.log(`Fetching swaps for ${address}`);
+        console.log(`Moralis: Fetching swaps for ${address}`);
         let cursor = null;
         let allSwaps = [];
 
@@ -27,7 +27,7 @@ const getWalletTokenSwaps = async (address, chain) => {
             if (!data.cursor || swaps.length < 100) break;
             cursor = data.cursor;
         }
-        console.log(`Fetched ${allSwaps.length} swaps for ${address}`);
+        console.log(`Moralis: Fetched ${allSwaps.length} swaps for ${address}`);
         return allSwaps;
     } catch (error) {
         console.error(`Error fetching swaps for ${address}:`, error.response?.data?.message);
@@ -40,7 +40,7 @@ const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 const getWalletHistory = async (address, chain) => {
     try {
-        console.log(`Fetching transactions history for ${address}`);
+        console.log(`Moralis: Fetching transactions history for ${address}`);
         let cursor = null;
         const allTransactions = [];
 
@@ -61,7 +61,7 @@ const getWalletHistory = async (address, chain) => {
             await delay(5000);
         }
 
-        console.log(`Fetched ${allTransactions.length} transactions history for ${address}`);
+        console.log(`Moralis: Fetched ${allTransactions.length} transactions history for ${address}`);
         return allTransactions;
     } catch (error) {
         console.error(`Error fetching history for ${address}:`, error.response?.data?.message || error.message);
@@ -73,10 +73,10 @@ const getWalletHistory = async (address, chain) => {
 // Get token balances for a specific wallet address and their token prices in USD.
 const getWalletTokenBalances = async (address, chain) => {
     try {
-        console.log(`Fetching token balances for ${address}`);
+        console.log(`Moralis: Fetching token balances for ${address}`);
         const url = `wallets/${address}/tokens?chain=${chain}`;
         const response = await api.get(url);
-        console.log(`Fetched token balances for ${address}`);
+        console.log(`Moralis: Fetched token balances for ${address}`);
         return response.data.result || [];
     } catch (error) {
         console.error(`Error fetching balance for ${address}:`, error.response?.data?.message);
@@ -87,7 +87,7 @@ const getWalletTokenBalances = async (address, chain) => {
 // Get the active chains for a wallet address.
 const getActiveWalletChains = async (address) => {
     try {
-        console.log(`Fetching active chains for ${address}`);
+        console.log(`Moralis: Fetching active chains for ${address}`);
         const chains = [
             'eth',
             'polygon',
@@ -113,7 +113,7 @@ const getActiveWalletChains = async (address) => {
         const response = await api.get(url);
 
         const activeChains = response.data.active_chains || [];
-        console.log(`Fetched active chains for ${address}`);
+        console.log(`Moralis: Fetched active chains for ${address}`);
         return activeChains.filter(chain => chain?.first_transaction !== null || chain?.last_transaction !== null).map(chain => chain?.chain);
     } catch (error) {
         console.error(`Error fetching active chains for ${address}:`, error.response?.data?.message);
@@ -124,11 +124,11 @@ const getActiveWalletChains = async (address) => {
 // Get the token price denominated in the blockchain's native token and USD.
 const getTokenPrice = async (token, chain, block) => {
     try {
-        console.log(`Fetching price for token ${token}`);
+        console.log(`Moralis: Fetching price for token ${token}`);
         const url = `erc20/${token}/price?chain=${chain}${block ? `&to_block=${block}` : ''}`;
 
         const response = await api.get(url);
-        console.log(`Fetched price for token ${token}`);
+        console.log(`Moralis: Fetched price for token ${token}`);
         return response.data;
     } catch (error) {
         console.error(`Error fetching price for token ${token}:`, error.response?.data?.message);
