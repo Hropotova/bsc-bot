@@ -20,7 +20,7 @@ const getAllTransactions = async (address, chain_id) => {
             }
         });
 
-        console.log(`can: Fetched ${response.data.result.length} transactions for ${address}`);
+        console.log(`Scan: Fetched ${response.data.result.length} transactions for ${address}`);
 
         return response.data.result;
 
