@@ -53,7 +53,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 if (!cfg) continue;
 
                 const code = await getCode(address, cfg.rpc_url, cfg.chain);
-
+                console.log('code', code)
                 const isAddress = code === '0x' || code === '0x0';
 
                 if (isAddress) {
@@ -75,28 +75,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             swaps,
                             transfers
                         } = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
-
-                        const targetHashes = [
-                            '0xfa5a08d2a5b8b4e031ddb6ea17f6a02f07e906ebaffa6826a7a70888c7950ebf',
-                            '0xf79e2e29de0f56d7eab1aa428948dd53aafd41b46e994163dd177dd8ea61e8d2',
-                            '0xa4b90a54fd47e2298434c28be57bb08a66f9ea25bffce6e18a6c9cfd2ff5b292',
-                            '0xa2bf47d15dc65b58dce4a769ee42e6f9df08d0a85d464895a011bea5f94d5c90',
-                            '0x71acaa4928075f8a5fa54bfd40d5c5c86ba39c76140dd1bd764ef1995ebe8f0c',
-                            '0xfefdc15a22f29f094a99c7f47b7bc0a63c296a0fab28ca8308bb4ad3fc5ce65b',
-                            '0x8ce8cdc649f3a65184ba21b6c39b933891c2e30e6c816eaeb0ddcd3c50743f5a',
-                            '0x913a5f22f1386d77686b6fb30f3e9d61055e1e9923a4eefe6c7931d06d08de00',
-                            '0x161446b7218cb42e513ee6715743f06e71a07df85ea3fbe090b4d6659ed90d3e',
-                        ];
-
-                        const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
-
-                        const matchingTransactions = swaps.filter(tx =>
-                            lowerCaseHashes.includes(tx.transactionHash.toLowerCase())
-                        );
-
-                        matchingTransactions.forEach(tx => {
-                            // console.log(tx);
-                        });
 
                         let allSwaps = [...swaps];
                         let allTransfers = [...transfers];

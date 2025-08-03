@@ -204,22 +204,10 @@ const getActiveWalletChains = async (address) => {
         console.log(`Moralis: Fetching active chains for ${address}`);
         const chains = [
             'eth',
-            'polygon',
             'bsc',
             'arbitrum',
             'base',
-            'optimism',
-            'linea',
             'avalanche',
-            'fantom',
-            'cronos',
-            'gnosis',
-            'chiliz',
-            'moonbeam',
-            'flow',
-            'ronin',
-            'lisk',
-            'pulse',
         ];
 
         const params = chains.map((chain, index) => `chains[${index}]=${chain}`).join('&');
