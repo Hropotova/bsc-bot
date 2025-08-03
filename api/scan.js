@@ -138,9 +138,7 @@ const getTokenTransfers = async (address, contractAddress, chain_id) => {
         );
 
         const result = response.data.result || [];
-        console.log(
-            `Etherscan: Fetched ${result.length} token transfers for ${address} and token ${contractAddress}`
-        );
+        console.log(`Etherscan: Fetched ${result.length} token transfers for ${address} and token ${contractAddress}`);
         return result;
     } catch (error) {
         console.error(

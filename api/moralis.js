@@ -230,6 +230,7 @@ const getActiveWalletChains = async (address) => {
         const response = await rateLimiter.schedule(dynamicCost, () =>
             fetchWithRetry(() => api.get(url))
         );
+        console.log('response.data.active_chains', response.data.active_chains )
         const activeChains = response.data.active_chains || [];
 
         console.log(`Moralis: Fetched active chains for ${address}`);

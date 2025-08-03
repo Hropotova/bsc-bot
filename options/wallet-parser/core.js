@@ -45,10 +45,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
             // Get the active chains for a wallet address.
             const activeChains = await getActiveWalletChains(address);
 
-            const chains = chainsToProcess.length ? chainsToProcess : activeChains;
+            const chains = chainsToProcess.length === 1 ? chainsToProcess : activeChains;
 
             const chainResults = {};
-
             for (const chainKey of chains) {
                 const cfg = config[chainKey];
                 if (!cfg) continue;
