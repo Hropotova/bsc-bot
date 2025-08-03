@@ -37,7 +37,7 @@ class SimpleRateLimiter {
 const defaultLimiter = new SimpleRateLimiter(5); // free: 5 req/sec
 
 const api = axios.create({
-    baseURL: 'https://api.etherscan.io/api',
+    baseURL: 'https://api.etherscan.io/v2/api',
     headers: {
         accept: 'application/json',
     },
@@ -92,7 +92,7 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 // Scan API to retrieve all transactions for a given address on a specific chain.
 const getAllTransactions = async (address, chain_id) => {
     try {
-        console.log(`Etherscan: Fetching transactions for ${address}`);
+        console.log(`Scan: Fetching transactions for ${address} for chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'txlist',
@@ -109,7 +109,7 @@ const getAllTransactions = async (address, chain_id) => {
         );
 
         const result = response.data.result || [];
-        console.log(`Etherscan: Fetched ${result.length} transactions for ${address}`);
+        console.log(`Scan: Fetched ${result.length} transactions for ${address} for chain ${chain_id}`);
         return result;
     } catch (error) {
         console.error(`Error fetching transactions for ${address}:`, error.response?.data || error.message);
@@ -120,7 +120,7 @@ const getAllTransactions = async (address, chain_id) => {
 // Scan API to retrieve all transactions for a given address on a specific chain.
 const getTokenTransfers = async (address, contractAddress, chain_id) => {
     try {
-        console.log(`Etherscan: Fetching token transfers for address ${address} and token ${contractAddress}`);
+        console.log(`Scan: Fetching token transfers for address ${address} and token ${contractAddress} for chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'tokentx',
@@ -138,7 +138,7 @@ const getTokenTransfers = async (address, contractAddress, chain_id) => {
         );
 
         const result = response.data.result || [];
-        console.log(`Etherscan: Fetched ${result.length} token transfers for ${address} and token ${contractAddress}`);
+        console.log(`Scan: Fetched ${result.length} token transfers for ${address} and token ${contractAddress} for chain ${chain_id}`);
         return result;
     } catch (error) {
         console.error(

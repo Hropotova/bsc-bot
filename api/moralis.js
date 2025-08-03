@@ -120,7 +120,7 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 // Get all swap related transactions (buy, sell).
 const getWalletTokenSwaps = async (address, chain) => {
     try {
-        console.log(`Moralis: Fetching swaps for ${address}`);
+        console.log(`Moralis: Fetching swaps for ${address} for chain ${chain}`);
         let cursor = null;
         let allSwaps = [];
 
@@ -139,7 +139,7 @@ const getWalletTokenSwaps = async (address, chain) => {
             cursor = data.cursor;
         }
 
-        console.log(`Moralis: Fetched ${allSwaps.length} swaps for ${address}`);
+        console.log(`Moralis: Fetched ${allSwaps.length} swaps for ${address} for chain ${chain}`);
         return allSwaps;
     } catch (error) {
         console.error(`Error fetching swaps for ${address}:`, error.response?.data?.message);
@@ -150,7 +150,7 @@ const getWalletTokenSwaps = async (address, chain) => {
 // Retrieve the full transaction history of a specified wallet address.
 const getWalletHistory = async (address, chain) => {
     try {
-        console.log(`Moralis: Fetching transactions history for ${address}`);
+        console.log(`Moralis: Fetching transactions history for ${address} for chain ${chain}`);
         let cursor = null;
         const allTransactions = [];
 
@@ -172,7 +172,7 @@ const getWalletHistory = async (address, chain) => {
             cursor = data.cursor;
         }
 
-        console.log(`Moralis: Fetched ${allTransactions.length} transactions history for ${address}`);
+        console.log(`Moralis: Fetched ${allTransactions.length} transactions history for ${address} for chain ${chain}`);
         return allTransactions;
     } catch (error) {
         console.error(`Error fetching history for ${address}:`, error.response?.data?.message || error.message);
@@ -183,14 +183,14 @@ const getWalletHistory = async (address, chain) => {
 // Get token balances for a specific wallet address.
 const getWalletTokenBalances = async (address, chain) => {
     try {
-        console.log(`Moralis: Fetching token balances for ${address}`);
+        console.log(`Moralis: Fetching token balances for ${address} for chain ${chain}`);
         const url = `wallets/${address}/tokens?chain=${chain}`;
 
         const response = await rateLimiter.schedule(COST.balances, () =>
             fetchWithRetry(() => api.get(url))
         );
 
-        console.log(`Moralis: Fetched token balances for ${address}`);
+        console.log(`Moralis: Fetched token balances for ${address} for chain ${chain}`);
         return response.data.result || [];
     } catch (error) {
         console.error(`Error fetching balance for ${address}:`, error.response?.data?.message);
@@ -230,7 +230,6 @@ const getActiveWalletChains = async (address) => {
         const response = await rateLimiter.schedule(dynamicCost, () =>
             fetchWithRetry(() => api.get(url))
         );
-        console.log('response.data.active_chains', response.data.active_chains )
         const activeChains = response.data.active_chains || [];
 
         console.log(`Moralis: Fetched active chains for ${address}`);
@@ -244,14 +243,14 @@ const getActiveWalletChains = async (address) => {
 // Get the token price denominated in the blockchain's native token and USD.
 const getTokenPrice = async (token, chain, block) => {
     try {
-        console.log(`Moralis: Fetching price for token ${token}`);
+        console.log(`Moralis: Fetching price for token ${token} for chain ${chain}`);
         const url = `erc20/${token}/price?chain=${chain}${block ? `&to_block=${block}` : ''}`;
 
         const response = await rateLimiter.schedule(COST.tokenPrice, () =>
             fetchWithRetry(() => api.get(url))
         );
 
-        console.log(`Moralis: Fetched price for token ${token}`);
+        console.log(`Moralis: Fetched price for token ${token} for chain ${chain}`);
         return response.data;
     } catch (error) {
         console.error(`Error fetching price for token ${token}:`, error.response?.data?.message);
