@@ -1,31 +1,118 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const api = axios.create({baseURL: 'https://api.etherscan.io/v2/api'});
+// Rate limiter for N calls per second
+class SimpleRateLimiter {
+    constructor(maxPerSecond) {
+        this.maxPerSecond = maxPerSecond;
+        this.tokens = maxPerSecond;
+        this.queue = [];
+
+        setInterval(() => {
+            this.tokens = this.maxPerSecond;
+            this._processQueue();
+        }, 1000);
+    }
+
+    _processQueue() {
+        while (this.tokens > 0 && this.queue.length) {
+            const {fn, resolve, reject} = this.queue.shift();
+            this.tokens--;
+            fn().then(resolve).catch(reject);
+        }
+    }
+
+    schedule(fn) {
+        return new Promise((resolve, reject) => {
+            if (this.tokens > 0) {
+                this.tokens--;
+                fn().then(resolve).catch(reject);
+            } else {
+                this.queue.push({fn, resolve, reject});
+            }
+        });
+    }
+}
+
+const defaultLimiter = new SimpleRateLimiter(5); // free: 5 req/sec
+
+const api = axios.create({
+    baseURL: 'https://api.etherscan.io/api',
+    headers: {
+        accept: 'application/json',
+    },
+});
+
+// Logging headers for diagnostics
+const logHeaders = (headers) => {
+    if (!headers) return;
+    ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining'].forEach(h => {
+        if (headers[h]) console.debug(`[Etherscan Header] ${h}: ${headers[h]}`);
+    });
+};
+
+// Fetch with retries and exponential backoff
+const fetchWithRetry = async (fn, maxRetries = 5) => {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const resp = await fn();
+            logHeaders(resp.headers);
+            return resp;
+        } catch (err) {
+            const status = err.response?.status;
+            const isRetryable =
+                status === 429 ||
+                err.code === 'ECONNRESET' ||
+                err.code === 'ETIMEDOUT' ||
+                !err.response;
+
+            if (attempt === maxRetries || !isRetryable) {
+                throw err;
+            }
+
+            const backoff = 200 * Math.pow(2, attempt);
+            const jitter = Math.random() * 100;
+            const wait = backoff + jitter;
+
+            const retryAfter = err.response?.headers?.['retry-after'];
+            if (retryAfter) {
+                const serverWait = parseFloat(retryAfter) * 1000;
+                console.warn(`Server asked to retry after ${retryAfter}s; waiting ${Math.round(serverWait + 100)}ms`);
+                await new Promise(r => setTimeout(r, serverWait + 100));
+            } else {
+                console.warn(
+                    `Request failed (status=${status || 'network'}) attempt ${attempt + 1}, retrying in ${Math.round(wait)}ms`
+                );
+                await new Promise(r => setTimeout(r, wait));
+            }
+        }
+    }
+};
 
 // Scan API to retrieve all transactions for a given address on a specific chain.
 const getAllTransactions = async (address, chain_id) => {
     try {
-        console.log(`Scan: Fetching transactions for ${address}`);
-        const response = await api.get('', {
-            params: {
-                chainid: chain_id,
-                module: 'account',
-                action: 'txlist',
-                address: address,
-                startblock: 0,
-                endblock: 99999999,
-                sort: 'asc',
-                apikey: process.env.SCAN_API_KEY,
-            }
-        });
+        console.log(`Etherscan: Fetching transactions for ${address}`);
+        const params = {
+            module: 'account',
+            action: 'txlist',
+            address,
+            startblock: 0,
+            endblock: 99999999,
+            sort: 'asc',
+            apikey: process.env.SCAN_API_KEY,
+            chainid: chain_id,
+        };
 
-        console.log(`Scan: Fetched ${response.data.result.length} transactions for ${address}`);
+        const response = await defaultLimiter.schedule(() =>
+            fetchWithRetry(() => api.get('', {params}))
+        );
 
-        return response.data.result;
-
+        const result = response.data.result || [];
+        console.log(`Etherscan: Fetched ${result.length} transactions for ${address}`);
+        return result;
     } catch (error) {
-        console.error(`Error fetching transactions for ${address}:`, error.message);
+        console.error(`Error fetching transactions for ${address}:`, error.response?.data || error.message);
         return [];
     }
 };
@@ -33,27 +120,38 @@ const getAllTransactions = async (address, chain_id) => {
 // Scan API to retrieve all transactions for a given address on a specific chain.
 const getTokenTransfers = async (address, contractAddress, chain_id) => {
     try {
-        console.log(`Scan: Fetching token transfers for address ${address} and token ${contractAddress}`);
-        const response = await api.get('', {
-            params: {
-                chainid: chain_id,
-                module: 'account',
-                action: 'tokentx',
-                address: address,
-                contractaddress: contractAddress,
-                startblock: 0,
-                endblock: 99999999,
-                sort: 'asc',
-                apikey: process.env.SCAN_API_KEY,
-            }
-        });
-        console.log(`Scan: Fetched ${response.data.result.length} token transfers for ${address} and token ${contractAddress}`);
-        return response.data.result;
+        console.log(`Etherscan: Fetching token transfers for address ${address} and token ${contractAddress}`);
+        const params = {
+            module: 'account',
+            action: 'tokentx',
+            address,
+            contractaddress: contractAddress,
+            startblock: 0,
+            endblock: 99999999,
+            sort: 'asc',
+            apikey: process.env.SCAN_API_KEY,
+            chainid: chain_id,
+        };
+
+        const response = await defaultLimiter.schedule(() =>
+            fetchWithRetry(() => api.get('', {params}))
+        );
+
+        const result = response.data.result || [];
+        console.log(
+            `Etherscan: Fetched ${result.length} token transfers for ${address} and token ${contractAddress}`
+        );
+        return result;
     } catch (error) {
-        console.error(`Error fetching token transfers for ${address} (token: ${contractAddress}):`, error.message);
+        console.error(
+            `Error fetching token transfers for ${address} (token: ${contractAddress}):`,
+            error.response?.data || error.message
+        );
         return [];
     }
 };
 
-
-module.exports = {getAllTransactions, getTokenTransfers};
+module.exports = {
+    getAllTransactions,
+    getTokenTransfers,
+};
