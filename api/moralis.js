@@ -153,6 +153,7 @@ const getWalletHistory = async (address, chain) => {
         console.log(`Moralis: Fetching transactions history for ${address} for chain ${chain}`);
         let cursor = null;
         const allTransactions = [];
+        let totalCount = 0;
 
         while (true) {
             const url = `wallets/${address}/history?chain=${chain}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
@@ -162,6 +163,12 @@ const getWalletHistory = async (address, chain) => {
             );
             const data = response.data;
             const transactions = data.result || [];
+
+            totalCount += transactions.length;
+
+            if (totalCount > process.env.TRANSACTIONS_COUNT ) {
+                return 'TRANSACTIONS_COUNT_LIMIT';
+            }
 
             allTransactions.push(...transactions);
 

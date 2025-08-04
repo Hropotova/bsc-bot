@@ -61,11 +61,19 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     const transactions = await getAllTransactions(address, cfg.chain_id);
 
                     if (transactions.length < process.env.TRANSACTIONS_COUNT) {
-                        // Get native token price in USD
-                        const {usdPrice} = await getTokenPrice(cfg.contract, cfg.chain);
-
                         // Get the full transaction history of a specified wallet address.
                         const transactionsHistory = await getWalletHistory(address, cfg.chain);
+
+                        if (transactionsHistory === 'TRANSACTIONS_COUNT_LIMIT') {
+                            await bot.sendMessage(chatId,
+                                `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``,
+                                {parse_mode: 'MarkdownV2'}
+                            );
+                            continue;
+                        }
+
+                        // Get native token price in USD
+                        const {usdPrice} = await getTokenPrice(cfg.contract, cfg.chain);
 
                         // Get token balances for a specific wallet address.
                         const balances = await getWalletTokenBalances(address, cfg.chain);
@@ -111,161 +119,164 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                                 if (cPtransactions.length < process.env.TRANSACTIONS_COUNT) {
                                     const cpHistory = await getWalletHistory(cp, cfg.chain);
+                                    if (cpHistory !== 'TRANSACTIONS_COUNT_LIMIT') {
 
-                                    const {swaps: allCpSwaps, transfers: allCpTransfers} =
-                                        await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
 
-                                    const cpSwaps = allCpSwaps.filter(s =>
-                                        s.bought.address?.toLowerCase() === contract.toLowerCase() ||
-                                        s.sold.address?.toLowerCase() === contract.toLowerCase()
-                                    );
-                                    const cpTransfers = allCpTransfers.filter(t =>
-                                        t.contract?.toLowerCase() === contract.toLowerCase()
-                                    );
+                                        const {swaps: allCpSwaps, transfers: allCpTransfers} =
+                                            await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
 
-                                    const cpBuySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
+                                        const cpSwaps = allCpSwaps.filter(s =>
+                                            s.bought.address?.toLowerCase() === contract.toLowerCase() ||
+                                            s.sold.address?.toLowerCase() === contract.toLowerCase()
+                                        );
+                                        const cpTransfers = allCpTransfers.filter(t =>
+                                            t.contract?.toLowerCase() === contract.toLowerCase()
+                                        );
 
-                                    const totalSentToParent = allCpTransfers
-                                        .filter(t =>
-                                            t.contract?.toLowerCase() === contract.toLowerCase() &&
-                                            t.from?.toLowerCase() === cp &&
-                                            t.to?.toLowerCase() === address.toLowerCase()
-                                        )
-                                        .reduce((sum, t) => sum + Math.abs(parseFloat(t.value)), 0);
+                                        const cpBuySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
 
-                                    if (cpBuySwaps.length === 1 && totalSentToParent > 0) {
-                                        const onlySwap = {...cpSwaps[0]};
+                                        const totalSentToParent = allCpTransfers
+                                            .filter(t =>
+                                                t.contract?.toLowerCase() === contract.toLowerCase() &&
+                                                t.from?.toLowerCase() === cp &&
+                                                t.to?.toLowerCase() === address.toLowerCase()
+                                            )
+                                            .reduce((sum, t) => sum + Math.abs(parseFloat(t.value)), 0);
 
-                                        const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
-                                        const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
+                                        if (cpBuySwaps.length === 1 && totalSentToParent > 0) {
+                                            const onlySwap = {...cpSwaps[0]};
 
-                                        const ratio = totalSentToParent / originalBought;
+                                            const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
+                                            const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
 
-                                        const newEth = originalEth * ratio;
-
-                                        onlySwap.sold.amount = newEth.toString();
-                                        onlySwap.bought.amount = totalSentToParent.toString();
-
-                                        allSwaps.push(onlySwap);
-                                        continue;
-                                    }
-
-                                    if (cpBuySwaps.length > 1 && totalSentToParent > 0) {
-                                        const firstSwap = {...cpSwaps[0]};
-                                        const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
-
-                                        if (totalSentToParent >= firstBought) {
-
-                                            const buySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
-                                            const sumBought = buySwaps.reduce((sum, s) =>
-                                                sum + Math.abs(parseFloat(s.bought.amount)), 0
-                                            );
-
-                                            const ratioAll = totalSentToParent / sumBought;
-
-                                            buySwaps.forEach((s, idx) => {
-                                                const clone = {...s};
-                                                const origSold = Math.abs(parseFloat(clone.sold.amount));
-                                                const origBought = Math.abs(parseFloat(clone.bought.amount));
-
-                                                clone.sold.amount = (origSold * ratioAll).toString();
-                                                clone.bought.amount = (origBought * ratioAll).toString();
-
-                                                allSwaps.push(clone);
-                                            });
-                                        } else {
-                                            const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
-                                            const ratio = totalSentToParent / firstBought;
+                                            const ratio = totalSentToParent / originalBought;
 
                                             const newEth = originalEth * ratio;
 
-                                            firstSwap.sold.amount = newEth.toString();
-                                            firstSwap.bought.amount = totalSentToParent.toString();
+                                            onlySwap.sold.amount = newEth.toString();
+                                            onlySwap.bought.amount = totalSentToParent.toString();
 
-                                            allSwaps.push(firstSwap);
-                                        }
-                                        continue;
-                                    }
-
-                                    let outAmt = 0, inAmt = 0;
-                                    allTransfers
-                                        .filter(t => t.contract?.toLowerCase() === contract.toLowerCase())
-                                        .forEach(t => {
-                                            const v = Math.abs(parseFloat(t.value));
-                                            if (['send', 'token send'].includes(t.category)) outAmt += v;
-                                            if (['receive', 'token receive'].includes(t.category)) inAmt += v;
-                                        });
-
-                                    const spent = initialStats[contract].spent_token;
-                                    const received = initialStats[contract].receive_token;
-
-                                    const ratioOut = spent > 0 ? Math.min(1, outAmt / spent) : 0;
-                                    const ratioIn = spent === 0 ? Math.min(1, inAmt / received) : 0;
-
-                                    function matchSwapsByRatio(swaps, ratio, type) {
-                                        const filtered = swaps.filter(s => s.transactionType === type);
-
-                                        if (ratio === 1) {
-                                            return filtered;
-                                        }
-                                        if (!filtered.length) {
-                                            return [];
+                                            allSwaps.push(onlySwap);
+                                            continue;
                                         }
 
-                                        const total = filtered.reduce((sum, s) => {
-                                            const amt = Math.abs(parseFloat(
-                                                type === 'sell' ? s.sold.amount : s.bought.amount
-                                            ));
-                                            return sum + amt;
-                                        }, 0);
+                                        if (cpBuySwaps.length > 1 && totalSentToParent > 0) {
+                                            const firstSwap = {...cpSwaps[0]};
+                                            const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
 
-                                        let target = total * ratio, acc = 0;
-                                        const sorted = filtered.sort((a, b) =>
-                                            new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
-                                        );
+                                            if (totalSentToParent >= firstBought) {
 
-                                        const result = [];
-                                        for (const sw of sorted) {
-                                            const amt = Math.abs(parseFloat(
-                                                type === 'sell' ? sw.sold.amount : sw.bought.amount
-                                            ));
-                                            if (amt >= target - acc) {
-                                                const clone = {...sw};
-                                                if (type === 'sell') clone.sold.amount = (target - acc).toString();
-                                                else clone.bought.amount = (target - acc).toString();
-                                                result.push(clone);
-                                                break;
+                                                const buySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
+                                                const sumBought = buySwaps.reduce((sum, s) =>
+                                                    sum + Math.abs(parseFloat(s.bought.amount)), 0
+                                                );
+
+                                                const ratioAll = totalSentToParent / sumBought;
+
+                                                buySwaps.forEach((s, idx) => {
+                                                    const clone = {...s};
+                                                    const origSold = Math.abs(parseFloat(clone.sold.amount));
+                                                    const origBought = Math.abs(parseFloat(clone.bought.amount));
+
+                                                    clone.sold.amount = (origSold * ratioAll).toString();
+                                                    clone.bought.amount = (origBought * ratioAll).toString();
+
+                                                    allSwaps.push(clone);
+                                                });
+                                            } else {
+                                                const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
+                                                const ratio = totalSentToParent / firstBought;
+
+                                                const newEth = originalEth * ratio;
+
+                                                firstSwap.sold.amount = newEth.toString();
+                                                firstSwap.bought.amount = totalSentToParent.toString();
+
+                                                allSwaps.push(firstSwap);
                                             }
-                                            result.push(sw);
-                                            acc += amt;
+                                            continue;
                                         }
 
-                                        if (!result.length) {
-                                            const avg = (total * ratio) / filtered.length;
-                                            const tpl = {...filtered[0]};
-                                            if (type === 'sell') tpl.sold.amount = avg.toString();
-                                            else tpl.bought.amount = avg.toString();
-                                            return [tpl];
+                                        let outAmt = 0, inAmt = 0;
+                                        allTransfers
+                                            .filter(t => t.contract?.toLowerCase() === contract.toLowerCase())
+                                            .forEach(t => {
+                                                const v = Math.abs(parseFloat(t.value));
+                                                if (['send', 'token send'].includes(t.category)) outAmt += v;
+                                                if (['receive', 'token receive'].includes(t.category)) inAmt += v;
+                                            });
+
+                                        const spent = initialStats[contract].spent_token;
+                                        const received = initialStats[contract].receive_token;
+
+                                        const ratioOut = spent > 0 ? Math.min(1, outAmt / spent) : 0;
+                                        const ratioIn = spent === 0 ? Math.min(1, inAmt / received) : 0;
+
+                                        function matchSwapsByRatio(swaps, ratio, type) {
+                                            const filtered = swaps.filter(s => s.transactionType === type);
+
+                                            if (ratio === 1) {
+                                                return filtered;
+                                            }
+                                            if (!filtered.length) {
+                                                return [];
+                                            }
+
+                                            const total = filtered.reduce((sum, s) => {
+                                                const amt = Math.abs(parseFloat(
+                                                    type === 'sell' ? s.sold.amount : s.bought.amount
+                                                ));
+                                                return sum + amt;
+                                            }, 0);
+
+                                            let target = total * ratio, acc = 0;
+                                            const sorted = filtered.sort((a, b) =>
+                                                new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
+                                            );
+
+                                            const result = [];
+                                            for (const sw of sorted) {
+                                                const amt = Math.abs(parseFloat(
+                                                    type === 'sell' ? sw.sold.amount : sw.bought.amount
+                                                ));
+                                                if (amt >= target - acc) {
+                                                    const clone = {...sw};
+                                                    if (type === 'sell') clone.sold.amount = (target - acc).toString();
+                                                    else clone.bought.amount = (target - acc).toString();
+                                                    result.push(clone);
+                                                    break;
+                                                }
+                                                result.push(sw);
+                                                acc += amt;
+                                            }
+
+                                            if (!result.length) {
+                                                const avg = (total * ratio) / filtered.length;
+                                                const tpl = {...filtered[0]};
+                                                if (type === 'sell') tpl.sold.amount = avg.toString();
+                                                else tpl.bought.amount = avg.toString();
+                                                return [tpl];
+                                            }
+
+                                            return result;
                                         }
 
-                                        return result;
-                                    }
-
-                                    if (ratioOut > 0) {
-                                        if (totalSentToParent > 0) {
-                                            const matched = matchSwapsByRatio(cpSwaps, ratioOut, 'sell');
-                                            allSwaps.push(...matched);
-                                            if (ratioOut === 1) allTransfers.push(...cpTransfers);
-                                        } else {
-                                            allSwaps.push(...cpSwaps);
-                                        }
-                                    } else if (ratioIn > 0) {
-                                        if (totalSentToParent > 0) {
-                                            const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
-                                            allSwaps.push(...matched);
-                                            if (ratioIn === 1) allTransfers.push(...cpTransfers);
-                                        } else {
-                                            allSwaps.push(...cpSwaps);
+                                        if (ratioOut > 0) {
+                                            if (totalSentToParent > 0) {
+                                                const matched = matchSwapsByRatio(cpSwaps, ratioOut, 'sell');
+                                                allSwaps.push(...matched);
+                                                if (ratioOut === 1) allTransfers.push(...cpTransfers);
+                                            } else {
+                                                allSwaps.push(...cpSwaps);
+                                            }
+                                        } else if (ratioIn > 0) {
+                                            if (totalSentToParent > 0) {
+                                                const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
+                                                allSwaps.push(...matched);
+                                                if (ratioIn === 1) allTransfers.push(...cpTransfers);
+                                            } else {
+                                                allSwaps.push(...cpSwaps);
+                                            }
                                         }
                                     }
                                 }
