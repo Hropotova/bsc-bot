@@ -41,6 +41,7 @@ const api = axios.create({
     headers: {
         accept: 'application/json',
     },
+    timeout: 60000,
 });
 
 // Logging headers for diagnostics
