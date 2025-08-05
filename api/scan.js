@@ -91,9 +91,9 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 };
 
 // Scan API to retrieve all transactions for a given address on a specific chain.
-const getAllTransactions = async (address, chain_id) => {
+const getAllTransactions = async (address, chain_id, maxTx = 1300) => {
     try {
-        console.log(`Scan: Fetching transactions for ${address} for chain ${chain_id}`);
+        console.log(`Scan: Fetching up to ${maxTx} txs for ${address} on chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'txlist',
@@ -103,20 +103,25 @@ const getAllTransactions = async (address, chain_id) => {
             sort: 'asc',
             apikey: process.env.SCAN_API_KEY,
             chainid: chain_id,
+            page: 1,
+            offset: maxTx,
         };
 
         const response = await defaultLimiter.schedule(() =>
             fetchWithRetry(() => api.get('', {params}))
         );
 
-        const result = response.data.result || [];
-        console.log(`Scan: Fetched ${result.length} transactions for ${address} for chain ${chain_id}`);
-        return result;
+        const all = response.data.result || [];
+
+        const sliced = all.length > maxTx ? all.slice(0, maxTx) : all;
+        console.log(`Scan: Retrieved ${sliced.length} txs (requested max ${maxTx})`);
+        return sliced;
     } catch (error) {
         console.error(`Error fetching transactions for ${address}:`, error.response?.data || error.message);
         return [];
     }
 };
+
 
 // Scan API to retrieve all transactions for a given address on a specific chain.
 const getTokenTransfers = async (address, contractAddress, chain_id) => {
