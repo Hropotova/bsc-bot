@@ -91,7 +91,7 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 };
 
 // Scan API to retrieve all transactions for a given address on a specific chain.
-const getAllTransactions = async (address, chain_id, maxTx = 1300) => {
+const getAllTransactions = async (address, chain_id, maxTx = process.env.TRANSACTIONS_COUNT) => {
     try {
         console.log(`Scan: Fetching up to ${maxTx} txs for ${address} on chain ${chain_id}`);
         const params = {

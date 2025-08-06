@@ -16,7 +16,7 @@ class SimpleRateLimiter {
 
     _processQueue() {
         while (this.tokens > 0 && this.queue.length) {
-            const { fn, resolve, reject } = this.queue.shift();
+            const {fn, resolve, reject} = this.queue.shift();
             this.tokens--;
             fn().then(resolve).catch(reject);
         }
@@ -28,7 +28,7 @@ class SimpleRateLimiter {
                 this.tokens--;
                 fn().then(resolve).catch(reject);
             } else {
-                this.queue.push({ fn, resolve, reject });
+                this.queue.push({fn, resolve, reject});
             }
         });
     }

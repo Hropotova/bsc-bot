@@ -6,7 +6,7 @@ const mergeVirtualTokens = (tokenData) => {
         if (!symbol) continue;
 
         if (!symbolGroups[symbol]) symbolGroups[symbol] = [];
-        symbolGroups[symbol].push({ address, data });
+        symbolGroups[symbol].push({address, data});
     }
 
     for (const group of Object.values(symbolGroups)) {
@@ -41,4 +41,4 @@ const mergeVirtualTokens = (tokenData) => {
     return tokenData;
 }
 
-module.exports = { mergeVirtualTokens };
+module.exports = {mergeVirtualTokens};

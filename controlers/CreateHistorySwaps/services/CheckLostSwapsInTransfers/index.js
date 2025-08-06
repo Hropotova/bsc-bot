@@ -47,8 +47,6 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         return chosen;
     });
 
-
-
     const existingSwapHashes = new Set(
         swapsArray.map(s => s.transactionHash.toLowerCase())
     );

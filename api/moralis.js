@@ -166,8 +166,9 @@ const getWalletHistory = async (address, chain) => {
 
             totalCount += transactions.length;
 
-            if (totalCount > process.env.TRANSACTIONS_COUNT ) {
-                console.log(`Moralis: Requested max transactions (${totalCount})`);
+            if (totalCount > process.env.TRANSACTIONS_COUNT) {
+                console.log(`Moralis: Retrieved ${totalCount} txs (requested max ${process.env.TRANSACTIONS_COUNT})`);
+
                 return 'TRANSACTIONS_COUNT_LIMIT';
             }
 

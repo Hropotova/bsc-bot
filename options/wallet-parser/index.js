@@ -25,4 +25,4 @@ async function walletParserMultiChain(addresses, bot, chatId) {
     }
 }
 
-module.exports = { walletParserSingleChain, walletParserMultiChain };
+module.exports = {walletParserSingleChain, walletParserMultiChain};
