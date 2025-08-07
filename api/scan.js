@@ -1,6 +1,14 @@
 require('dotenv').config();
 const axios = require('axios');
 
+const txCache = new Map();
+const tokenTxCache = new Map();
+
+function clearScanCache() {
+    txCache.clear();
+    tokenTxCache.clear();
+}
+
 // Rate limiter for N calls per second
 class SimpleRateLimiter {
     constructor(maxPerSecond) {
@@ -44,12 +52,13 @@ const api = axios.create({
     timeout: 60000,
 });
 
-// Logging headers for diagnostics
+// — Логування радіт-лімітів із заголовків відповіді
 const logHeaders = (headers) => {
     if (!headers) return;
-    ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining'].forEach(h => {
-        if (headers[h]) console.debug(`[Etherscan Header] ${h}: ${headers[h]}`);
-    });
+    ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining']
+        .forEach(h => {
+            if (headers[h]) console.debug(`[Etherscan Header] ${h}: ${headers[h]}`);
+        });
 };
 
 // Fetch with retries and exponential backoff
@@ -90,10 +99,16 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
     }
 };
 
-// Scan API to retrieve all transactions for a given address on a specific chain.
-const getAllTransactions = async (address, chain_id, maxTx = process.env.TRANSACTIONS_COUNT) => {
+// Scan API to retrieve all transactions for a given address on a specific chain, з кешем
+const getAllTransactions = async (address, chain_id, maxTx = +process.env.TRANSACTIONS_COUNT) => {
+    const key = `${address}:${chain_id}:${maxTx}`;
+    if (txCache.has(key)) {
+        console.debug(`Cache hit: for getAllTransactions(${key})`);
+        return txCache.get(key);
+    }
+
     try {
-        console.log(`Scan: Fetching up to ${maxTx} txs for ${address} on chain ${chain_id}`);
+        console.debug(`Scan: Fetching up to ${maxTx} txs for ${address} on chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'txlist',
@@ -112,9 +127,10 @@ const getAllTransactions = async (address, chain_id, maxTx = process.env.TRANSAC
         );
 
         const all = response.data.result || [];
-
         const sliced = all.length > maxTx ? all.slice(0, maxTx) : all;
-        console.log(`Scan: Retrieved ${sliced.length} txs (requested max ${maxTx})`);
+
+        console.debug(`Scan: Retrieved ${sliced.length} txs (requested max ${maxTx})`);
+        txCache.set(key, sliced);
         return sliced;
     } catch (error) {
         console.error(`Error fetching transactions for ${address}:`, error.response?.data || error.message);
@@ -122,18 +138,29 @@ const getAllTransactions = async (address, chain_id, maxTx = process.env.TRANSAC
     }
 };
 
+// Scan API to retrieve token transfers, з кешем
+const getTokenTransfers = async (
+    address,
+    contractAddress,
+    chain_id,
+    startBlock = 0,
+    endBlock = 99999999
+) => {
+    const key = `${address}:${contractAddress}:${chain_id}`;
+    if (tokenTxCache.has(key)) {
+        console.debug(`Cache hit: for getTokenTransfers(${key})`);
+        return tokenTxCache.get(key);
+    }
 
-// Scan API to retrieve all transactions for a given address on a specific chain.
-const getTokenTransfers = async (address, contractAddress, chain_id) => {
     try {
-        console.log(`Scan: Fetching token transfers for address ${address} and token ${contractAddress} for chain ${chain_id}`);
+        console.debug(`Scan: Fetching token transfers for ${address} token ${contractAddress} on chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'tokentx',
             address,
             contractaddress: contractAddress,
-            startblock: 0,
-            endblock: 99999999,
+            startblock: startBlock,
+            endblock: endBlock,
             sort: 'asc',
             apikey: process.env.SCAN_API_KEY,
             chainid: chain_id,
@@ -144,7 +171,8 @@ const getTokenTransfers = async (address, contractAddress, chain_id) => {
         );
 
         const result = response.data.result || [];
-        console.log(`Scan: Fetched ${result.length} token transfers for ${address} and token ${contractAddress} for chain ${chain_id}`);
+        console.debug(`Scan: Fetched ${result.length} token transfers`);
+        tokenTxCache.set(key, result);
         return result;
     } catch (error) {
         console.error(
@@ -158,4 +186,5 @@ const getTokenTransfers = async (address, contractAddress, chain_id) => {
 module.exports = {
     getAllTransactions,
     getTokenTransfers,
+    clearScanCache,
 };

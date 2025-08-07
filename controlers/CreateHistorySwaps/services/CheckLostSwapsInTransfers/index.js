@@ -2,7 +2,6 @@ const {getTokenTransfers} = require('../../../../api/scan');
 const {getWalletTokenSwaps} = require('../../../../api/moralis');
 
 const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersArray, nativeTokenPrice) => {
-
     const rawSwaps = await getWalletTokenSwaps(address, config.chain);
 
     const grouped = rawSwaps.reduce((acc, swap) => {
@@ -84,8 +83,13 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         let shouldAdd = false;
 
         if (!isBoughtSafe) {
+            const block = Number(swap.blockNumber);
             const boughtTransfers = await getTokenTransfers(
-                address, boughtAddress, config.chain_id
+                address,
+                boughtAddress,
+                config.chain_id,
+                block,
+                block
             );
             if (Array.isArray(boughtTransfers) && boughtTransfers.length > 0) {
                 shouldAdd = true;
@@ -93,8 +97,13 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         }
 
         if (!shouldAdd && !isSoldSafe) {
+            const block = Number(swap.blockNumber);
             const soldTransfers = await getTokenTransfers(
-                address, soldAddress, config.chain_id
+                address,
+                soldAddress,
+                config.chain_id,
+                block,
+                block
             );
             if (Array.isArray(soldTransfers) && soldTransfers.length > 0) {
                 shouldAdd = true;

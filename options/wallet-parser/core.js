@@ -6,11 +6,11 @@ const {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
-    getWalletHistory,
+    getWalletHistory, clearMoralisCache,
 } = require('../../api/moralis');
 const {getCode} = require('../../api/moralis-rpc');
-const {getAllTransactions} = require('../../api/scan');
-const {getDexscreenerTokenPrice} = require('../../api/dexscreener');
+const {getAllTransactions, clearScanCache} = require('../../api/scan');
+const {getDexscreenerTokenPrice, clearDexCache} = require('../../api/dexscreener');
 
 const {
     createHistorySwaps,
@@ -53,7 +53,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 if (!cfg) continue;
 
                 const code = await getCode(address, cfg.rpc_url, cfg.chain);
-                console.log('code', code)
+                console.debug('Moralis: Adddress code', code)
                 const isAddress = code === '0x' || code === '0x0';
 
                 if (isAddress) {
@@ -578,6 +578,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         await bot.sendDocument(chatId, filePath, {caption: `\`${address}\``, parse_mode: 'Markdown'});
 
                         fs.unlinkSync(filePath);
+
+                        clearMoralisCache();
+                        clearScanCache();
+                        clearDexCache();
                     } else {
                         await bot.sendMessage(chatId,
                             `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``,
