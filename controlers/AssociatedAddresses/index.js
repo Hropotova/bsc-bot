@@ -68,7 +68,7 @@ const associatedAddresses = (address, transactions, cfg) => {
         return item;
     });
 
-    return {associated_addresses};
+    return associated_addresses;
 };
 
 module.exports = {associatedAddresses};
