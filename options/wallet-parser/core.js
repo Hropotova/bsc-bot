@@ -53,7 +53,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 if (!cfg) continue;
 
                 const code = await getCode(address, cfg.rpc_url, cfg.chain);
-                console.debug('Moralis: Adddress code', code)
+
+                console.debug('Moralis: Address code', code);
+
                 const isAddress = code === '0x' || code === '0x0';
 
                 if (isAddress) {
@@ -112,6 +114,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             if (counterparties.length === 1) {
                                 const cp = counterparties[0];
                                 const code = await getCode(cp, cfg.rpc_url, cfg.chain);
+
+                                console.debug('Moralis: Counterparty code', code);
+
                                 const isEOA = code === '0x' || code === '0x0';
                                 if (!isEOA) continue;
 
@@ -283,6 +288,21 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
+                        const targetHashes = [
+                            '0xaea05be844fc919753e2e136e5a564dd921e73cdfb3942dd06f1cf0a66227168',
+                            '0xa73f6d012b13ef13fd447b3cdade1215cc0293a79426e556bc9d57233b975681',
+                        ];
+
+                        const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
+
+                        const matchingTransactions = allSwaps.filter(tx =>
+                            lowerCaseHashes.includes(tx.transactionHash.toLowerCase())
+                        );
+
+                        matchingTransactions.forEach(tx => {
+                            console.log(tx);
+                        });
+
                         const tokenData = {};
                         for (const swap of allSwaps) {
                             const {bought, sold, transactionType} = swap;
@@ -290,8 +310,27 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             const boughtSymbol = bought.symbol;
                             const soldSymbol = sold.symbol;
-                            const boughtAddress = bought.address;
-                            const soldAddress = sold.address;
+                            const boughtAddress = bought.address?.toLowerCase();
+                            const soldAddress = sold.address?.toLowerCase();
+
+                            const boughtStable = cfg.stable_coins.includes(boughtAddress);
+                            const soldStable = cfg.stable_coins.includes(soldAddress);
+
+                            if (boughtStable && soldStable) continue;
+
+                            if (
+                                (boughtStable && soldSymbol !== cfg.trade_symbol) ||
+                                (soldStable && boughtSymbol !== cfg.trade_symbol)
+                            ) {
+                                continue;
+                            }
+
+                            if (
+                                (boughtStable && soldSymbol !== cfg.symbol) ||
+                                (soldStable && boughtSymbol !== cfg.symbol)
+                            ) {
+                                continue;
+                            }
 
                             // Handle BUY transactions.
                             if (transactionType === 'buy' && boughtAddress) {
