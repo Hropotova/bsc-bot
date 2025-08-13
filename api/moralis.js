@@ -165,8 +165,8 @@ const getWalletHistory = async (address, chain) => {
             );
             const txs = resp.data.result || [];
             total += txs.length;
-            if (total > +process.env.TRANSACTIONS_COUNT) {
-                console.debug(`Moralis: Retrieved ${total} txs (requested max ${process.env.TRANSACTIONS_COUNT})`);
+            if (total > +2000) {
+                console.debug(`Moralis: Retrieved ${total} txs (requested max ${2000})`);
                 historyCache.set(key, 'TRANSACTIONS_COUNT_LIMIT');
                 return 'TRANSACTIONS_COUNT_LIMIT';
             }
