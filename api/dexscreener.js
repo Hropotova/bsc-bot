@@ -109,7 +109,7 @@ const getDexscreenerTokenPrice = async (tokenAddress, chainId) => {
         return dexSingleCache.get(key);
     }
 
-    const url = `token-pairs/v1/${chainId}/${tokenAddress}`;
+    const url = `latest/dex/tokens/${tokenAddress}`;
     try {
         console.debug(`Dexscreener: Fetching price data for ${tokenAddress} on chain ${chainId}`);
         const response = await defaultLimiter.schedule(() =>
@@ -117,49 +117,38 @@ const getDexscreenerTokenPrice = async (tokenAddress, chainId) => {
         );
         console.debug(`Dexscreener: Fetched price data for ${tokenAddress}`);
         dexSingleCache.set(key, response.data);
-        return response.data;
+
+        if (response?.data?.pairs.length> 0) {
+
+            const pairs = Array.isArray(response?.data?.pairs)
+                ? response.data.pairs
+                : Array.isArray(response?.data)
+                    ? response.data
+                    : [];
+
+            if (!pairs.length) return null;
+
+            const toUsd = p => Number(p?.liquidity?.usd) || 0;
+            const toTs = p => Number(p?.pairCreatedAt) || 0;
+
+            const topPair = pairs.reduce((best, p) => {
+                if (!best) return p;
+                const bu = toUsd(best), pu = toUsd(p);
+                if (pu !== bu) return pu > bu ? p : best;
+                return toTs(p) > toTs(best) ? p : best;
+            }, null);
+
+            return topPair;
+        } else {
+            return response?.data?.pairs[0]
+        }
+
     } catch (error) {
         console.error(`Error fetching dexscreener price data for ${tokenAddress}:`, error.response?.data || error.message);
         return null;
     }
 };
-
-// Get multiple token-pairs in batch (up to provider limit, e.g., 30 addresses)
-const getDexscreenerMultipleTokenPrices = async (chainId, tokenAddresses = []) => {
-    if (!Array.isArray(tokenAddresses) || tokenAddresses.length === 0) {
-        return null;
-    }
-    const joined = tokenAddresses.join(',');
-    const key = `${chainId}:${joined}`;
-
-    if (dexBatchCache.has(key)) {
-        console.debug(`Cache hit: for getDexscreenerMultipleTokenPrices(${key})`);
-        return dexBatchCache.get(key);
-    }
-
-    // optionally enforce a max batch size if needed (e.g., 30)
-    const MAX_BATCH = 30;
-    if (tokenAddresses.length > MAX_BATCH) {
-        throw new Error(`Too many token addresses in batch, max is ${MAX_BATCH}`);
-    }
-
-    const url = `tokens/v1/${chainId}/${joined}`;
-    try {
-        console.debug(`Dexscreener: Fetching batched price data for ${tokenAddresses.length} tokens on chain ${chainId}`);
-        const response = await defaultLimiter.schedule(() =>
-            fetchWithRetry(() => api.get(url))
-        );
-        console.debug(`Dexscreener: Fetched batched price data`);
-        dexBatchCache.set(key, response.data);
-        return response.data;
-    } catch (error) {
-        console.error(`Error fetching dexscreener batched price data:`, error.response?.data || error.message);
-        return null;
-    }
-};
-
 module.exports = {
     getDexscreenerTokenPrice,
-    getDexscreenerMultipleTokenPrices,
     clearDexCache,
 };
