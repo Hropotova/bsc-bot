@@ -275,18 +275,19 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         const targetHashes = [
-                            '0xaea05be844fc919753e2e136e5a564dd921e73cdfb3942dd06f1cf0a66227168',
-                            '0xa73f6d012b13ef13fd447b3cdade1215cc0293a79426e556bc9d57233b975681',
+                            '0xbc97813691446828155a48871b4327f4a4943dfa0190c14b025eb5a3d7562697',
+                            '0xa41ad19544d4582758b84f9335f0e49bf142ec26c7dd4f29c740cdb5b0c004f7',
+                            '0x2155fc8e8e9e0136c415db878218e4e7a71d531218f8edec239b2c4d2e34f468',
                         ];
 
                         const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
 
-                        const matchingTransactions = allSwaps.filter(tx =>
-                            lowerCaseHashes.includes(tx.transactionHash.toLowerCase())
+                        const matchingTransactions = transactionsHistory.filter(tx =>
+                            lowerCaseHashes.includes(tx.hash.toLowerCase())
                         );
 
                         matchingTransactions.forEach(tx => {
-                            console.log(tx);
+                            console.log('tx', tx);
                         });
 
                         const tokenData = {};
@@ -417,7 +418,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         // Merge virtual tokens.
-                        mergeVirtualTokens(tokenData);
+                        if (cfg.chain === 'base') mergeVirtualTokens(tokenData);
 
                         // Get transaction frequency for address.
                         const transaction_frequency = transactionsFrequency(address, transactionsHistory);
@@ -481,6 +482,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const realizedPnl = stats.balance + (stats.received - stats.spent);
 
                             const allTokenContracts = [contract.toLowerCase()];
+
                             if (stats.same_contracts) {
                                 allTokenContracts.push(...Object.keys(stats.same_contracts).map(c => c));
                             }
@@ -531,12 +533,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     unrealized: Number(stats.balance.toFixed(2)),
                                 },
                                 avg_holding_hours: avgHoldingHours,
+                                minutes_after_launch_to_buy: diffMinutes,
+                                early_entry: earlyEntry,
                                 transfers: {
                                     inflow_count: inflowCount,
                                     outflow_count: outflowCount,
                                 },
-                                minutes_after_launch_to_buy: diffMinutes,
-                                early_entry: earlyEntry,
                                 trades: {
                                     buy_count: buyCount,
                                     sell_count: sellCount,
@@ -546,7 +548,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 }),
                                 ...(stats.same_contracts) && {
                                     same_contracts: stats.same_contracts,
-
                                 }
                             };
                         }
