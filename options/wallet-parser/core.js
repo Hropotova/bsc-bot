@@ -275,9 +275,18 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         const targetHashes = [
-                            '0xbc97813691446828155a48871b4327f4a4943dfa0190c14b025eb5a3d7562697',
-                            '0xa41ad19544d4582758b84f9335f0e49bf142ec26c7dd4f29c740cdb5b0c004f7',
-                            '0x2155fc8e8e9e0136c415db878218e4e7a71d531218f8edec239b2c4d2e34f468',
+                            '0xeede1753bc88395335b4686c8cbf3dcd8d0ac6f616adcb388bea1b01625b3dfe',
+                            '0x89f7be34a83770f84aea75501ca2e1965c42960467da34ff5f12d6f70ff4bd01',
+                            '0x515b34a2f63f2938c2693a81311a60fcb540148f95f66ffd9117ee3c70e319fc',
+                            '0xf56cf772c94f72d4ebf4f87b00aa53c54b785a6dd1087018c21f5bba2592f155',
+                            '0xf69c89e6b40a57645dc9b84391f7ae09a01668c4e948b77ab34d6c5237ff01e',
+                            '0xf5138e3091bcf58ad189f54435f9a8d9918cd8f31784181530af2866aa192a24',
+                            '0xdee815ca54e8d14e15f2d34363764b17fef3ec8c5aa7b2c74a56793d1150fb2c',
+                            '0xa0c6869ef88723718712dbff07df26796e452e7d2346e40d947c349f49a93305',
+                            '0xb1ed82cefb1c606b393e9612b1aeceef5223383b841307013d5c487c0e9e593a',
+                            '0x12f753d4cd057053070d0acf8c9d844d5cb61361f563ca5d761cdad87d670448',
+                            '0x813238e788b1736485f1acee2c99ca8d92f368738a9806b596e8403adf50ed37',
+                            '0x620685548c97ddbf5152e72ec194a77c9a0610a50e0c277226dcd94e47cf14d3',
                         ];
 
                         const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
@@ -286,8 +295,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             lowerCaseHashes.includes(tx.hash.toLowerCase())
                         );
 
-                        matchingTransactions.forEach(tx => {
-                            console.log('tx', tx);
+                        matchingTransactions.forEach((tx, index) => {
+                            // console.log(`tx - ${index}`, tx);
                         });
 
                         const tokenData = {};
@@ -456,9 +465,14 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         let sumRealizedPnls = 0;
                         let tokenCount = 0;
 
-                        let sumSpentForROI = 0;
-                        let sumPnLForROI = 0;
-
+                        const isEOAAddress = async (addr) => {
+                            try {
+                                const c = await getCode(addr, cfg.rpc_url, cfg.chain);
+                                return (c === '0x' || c === '0x0');
+                            } catch (e) {
+                                return true;
+                            }
+                        };
 
                         for (const [contract, stats] of Object.entries(tokenData)) {
                             let inflowCount = 0;
@@ -502,24 +516,76 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const isProfitable = stats.spent > 0 ? realizedPnl > 0 : null;
                             const isRoiCalculated = stats.spent > 0;
 
-                            if (stats.spent > 0) {
-                                sumSpentForROI += stats.spent;
-                                sumPnLForROI += realizedPnl;
-                            }
+                            // Count transfer directions and sum token amounts
+                            let transferInAmountToken = 0;
+                            let transferOutAmountToken = 0;
+                            let hasContractTransfer = false;
 
-                            tokenTransfers.forEach(transfer => {
+                            for (const transfer of tokenTransfers) {
                                 const v = Math.abs(parseFloat(transfer.value));
                                 if (['send', 'token send'].includes(transfer.category)) {
                                     outflowCount++;
+                                    transferOutAmountToken += v;
                                 }
                                 if (['receive', 'token receive'].includes(transfer.category)) {
                                     inflowCount++;
+                                    transferInAmountToken += v;
                                 }
-                            });
+                            }
 
+                            // CONTRACT_TRANSFERS check (any outgoing transfer to contract)
+                            // Check unique 'to' recipients for outflow
+                            const outRecipients = [...new Set(
+                                tokenTransfers
+                                    .filter(t => ['send', 'token send'].includes(t.category))
+                                    .map(t => (t.to || '').toLowerCase())
+                                    .filter(Boolean)
+                            )];
+
+                            for (const toAddr of outRecipients) {
+                                const eoa = await isEOAAddress(toAddr);
+                                if (!eoa) { // it is a contract
+                                    hasContractTransfer = true;
+                                    break;
+                                }
+                            }
+
+                            // UNMATCHED_TRANSFERS coverage:
+                            // Compare total transferred token amount vs token amount moved via swaps
+                            const totalTransferredToken = transferInAmountToken + transferOutAmountToken;
+                            const totalSwappedToken = (stats.spent_token || 0) + (stats.receive_token || 0);
+                            let unmatchedTransfersFlag = false;
+                            if (totalTransferredToken > 0) {
+                                const coverage = Math.min(totalSwappedToken, totalTransferredToken) / totalTransferredToken;
+                                if (coverage < 0.75) unmatchedTransfersFlag = true;
+                            }
 
                             const avgHoldingHours = averageHoldingHours(stats.trades);
                             const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
+
+                            let include = true;
+                            let exclude_reason = undefined;
+
+                            if (stats.spent === 0) {
+                                include = false;
+                                exclude_reason = 'ZERO_COST_BASIS';
+                            } else if (stats.spent < cfg.dust_spent_filter) {
+                                include = false;
+                                exclude_reason = 'DUST_SPENT';
+                            } else if (unmatchedTransfersFlag) {
+                                include = false;
+                                exclude_reason = 'UNMATCHED_TRANSFERS';
+                            } else if (hasContractTransfer) {
+                                include = false;
+                                exclude_reason = 'CONTRACT_TRANSFERS';
+                            } else if (
+                                Math.abs(realizedPnl) > cfg.mistake_data_filter ||
+                                Math.abs(stats.received) > cfg.mistake_data_filter ||
+                                Math.abs(stats.balance) > cfg.mistake_data_filter
+                            ) {
+                                include = false;
+                                exclude_reason = 'DATA_MISTAKE';
+                            }
 
                             addressData.traded_tokens[contract] = {
                                 symbol: stats.symbol,
@@ -539,6 +605,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     inflow_count: inflowCount,
                                     outflow_count: outflowCount,
                                 },
+                                include,
+                                ...(include === false ? {exclude_reason} : {}),
                                 trades: {
                                     buy_count: buyCount,
                                     sell_count: sellCount,
@@ -552,36 +620,44 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             };
                         }
 
-
                         const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
 
                         addressData.average_pnl = Number(overallAverage.toFixed(2));
-                        addressData.roi_pct = sumSpentForROI > 0 ? `${Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0))}%` : null;
 
-                        const tokens = Object.values(addressData.traded_tokens);
-                        const validTokens = tokens.filter(t => t.spent > 0);
-                        const totalSpent = validTokens.reduce((sum, t) => sum + t.spent, 0);
+                        // ====== Use only included tokens for performance score ======
+                        const tokens = Object.entries(addressData.traded_tokens).map(([k, v]) => ({contract: k, ...v}));
+                        const includedTokens = tokens.filter(t => t.include === true);
+                        const excludedTokens = tokens.filter(t => t.include === false);
 
-                        const token_accuracy_pct = validTokens.length
-                            ? (validTokens.filter(t => t.pnl.total > 0).length / validTokens.length) * 100
+                        const totalSpent = includedTokens.reduce((sum, t) => sum + (t.spent || 0), 0);
+
+                        const token_accuracy_pct = includedTokens.length
+                            ? (includedTokens.filter(t => t.pnl.total > 0).length / includedTokens.length) * 100
                             : null;
 
-                        const avg_token_roi_pct = validTokens.length
-                            ? validTokens.reduce((sum, t) => sum + (t.pnl.total / t.spent) * 100, 0) / validTokens.length
+                        const avg_token_roi_pct = includedTokens.length
+                            ? includedTokens.reduce((sum, t) => sum + (t.pnl.total / (t.spent || 1)) * 100, 0) / includedTokens.length
                             : null;
 
                         let roi_consistency_score = null;
-                        if (validTokens.length >= 2) {
-                            const roiValues = validTokens.map(t => (t.pnl.total / t.spent) * 100);
+                        if (includedTokens.length >= 2) {
+                            const roiValues = includedTokens.map(t => (t.pnl.total / (t.spent || 1)) * 100);
                             const mean = roiValues.reduce((a, b) => a + b, 0) / roiValues.length;
                             const variance = roiValues.reduce((a, b) => a + (b - mean) ** 2, 0) / (roiValues.length - 1);
                             const sd = Math.sqrt(variance);
-                            const cv = sd / mean;
-                            roi_consistency_score = Math.max(0, Math.min(10, 10 - cv * 2));
+                            const cv = mean !== 0 ? (sd / mean) : Infinity;
+                            roi_consistency_score = isFinite(cv) ? Math.max(0, Math.min(10, 10 - cv * 2)) : 0;
                         }
 
                         const weighted_roi_score = totalSpent
-                            ? validTokens.reduce((sum, t) => sum + ((t.pnl.total / t.spent) * 100) * t.spent, 0) / totalSpent
+                            ? includedTokens.reduce((sum, t) => sum + ((t.pnl.total / (t.spent || 1)) * 100) * t.spent, 0) / totalSpent
+                            : null;
+
+                        // ROI % across included tokens only
+                        const sumSpentForROI = includedTokens.reduce((s, t) => s + (t.spent || 0), 0);
+                        const sumPnLForROI = includedTokens.reduce((s, t) => s + (t.pnl.total || 0), 0);
+                        addressData.roi_pct = sumSpentForROI > 0
+                            ? `${Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0))}%`
                             : null;
 
                         // Add performance score to address data.
@@ -590,6 +666,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             avg_token_roi_pct: avg_token_roi_pct != null ? Number(avg_token_roi_pct.toFixed(2)) : null,
                             roi_consistency_score: roi_consistency_score != null ? Number(roi_consistency_score.toFixed(2)) : null,
                             weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
+                        };
+
+                        // scoring_scope
+                        addressData.scoring_scope = {
+                            included_tokens: includedTokens.map(t => t.contract),
+                            excluded_tokens: excludedTokens.map(t => t.contract),
                         };
 
                         // Save result for this chain

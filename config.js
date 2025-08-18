@@ -15,7 +15,9 @@ module.exports = {
         trade_symbol: 'WETH',
         symbol: 'ETH',
         rpc_url: rpcEthUrl,
-        min_transfer: 0.003,
+        min_transfer_filter: 0.003,
+        dust_spent_filter: 0.002,
+        mistake_data_filter: 990,
         stable_coins: [
             '0xdac17f958d2ee523a2206206994597c13d831ec7',
             '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48',
@@ -65,6 +67,8 @@ module.exports = {
         symbol: 'BNB',
         rpc_url: rpcBscUrl,
         min_transfer: 0.003,
+        dust_spent_filter: 0.006,
+        mistake_data_filter: 6290,
         stable_coins: [
             '0x55d398326f99059ff775485246999027b3197955',
             '0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d',
@@ -108,6 +112,8 @@ module.exports = {
         symbol: 'ETH',
         rpc_url: rpcBaseUrl,
         min_transfer: 0.005,
+        dust_spent_filter: 0.002,
+        mistake_data_filter: 990,
         stable_coins: [
             '0xfde4c96c8593536e31f229ea8f37b2ada2699bb2',
             '0x833589fcd6edb6e08f4c7c32d4f71b54bda02913',
@@ -146,6 +152,8 @@ module.exports = {
         symbol: 'AVAX',
         rpc_url: rpcAvalancheUrl,
         min_transfer: 0.01,
+        dust_spent_filter: 0.09,
+        mistake_data_filter: 50590,
         stable_coins: [
             '0x9702230a8ea53601f5cd2dc00fdbc13d4df4a8c7',
             '0xb97ef9ef8734c71904d8002f8b6bc66dd9c48a6e',
@@ -201,6 +209,8 @@ module.exports = {
         symbol: 'ETH',
         rpc_url: rpcArbitrumUrl,
         min_transfer: 0.003,
+        dust_spent_filter: 0.002,
+        mistake_data_filter: 990,
         stable_coins: [
             '0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9',
             '0xff970a61a04b1ca14834a43f5de4533ebddb5cc8',
