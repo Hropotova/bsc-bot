@@ -433,7 +433,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const transaction_frequency = transactionsFrequency(address, transactionsHistory);
 
                         // Get associated addresses.
-                        const associated_addresses = associatedAddresses(address, transactionsHistory, cfg);
+                        const associated_addresses = await associatedAddresses(address, transactionsHistory, cfg);
 
                         // Get first transaction that include native token.
                         const firstTransaction = transactionsHistory.find(tx => tx.summary && tx.summary.includes(cfg.symbol));
