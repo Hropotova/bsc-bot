@@ -14,16 +14,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
         'contract interaction'
     ];
 
-    transactions.forEach((transaction) => {
-        if (transaction.hash.toLowerCase() === '0xd4b01d83cc427c10e1a1cd7bbbc694120e07a69a058ac0aa82946e6c3ff43a1b'.toLowerCase()) {
-            console.log(transaction);
-        }
-
-        if (transaction.hash.toLowerCase() === '0xbba397732e623017cd1cf96d590057679a52f54423d3c2af7da0f8c096cbf514'.toLowerCase()) {
-            console.log(transaction);
-        }
-    })
-
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
             const {erc20_transfers = [], native_transfers = []} = tx;

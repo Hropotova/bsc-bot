@@ -22,6 +22,30 @@ const {
 
 const config = require('../../config.js');
 
+function stringifyWithInline(obj, inlineKeys = ['pnl'], space = 2) {
+    const START = '__INLINE__';
+    const END = '__END__';
+
+    const json = JSON.stringify(
+        obj,
+        (key, value) => {
+            if (inlineKeys.includes(key) && value && typeof value === 'object' && !Array.isArray(value)) {
+                const pairs = Object.entries(value)
+                    .map(([k, v]) => `"${k}": ${JSON.stringify(v)}`)
+                    .join(', ');
+                return `${START}{ ${pairs} }${END}`;
+            }
+            return value;
+        },
+        space
+    );
+
+    return json.replace(new RegExp(`"${START}([\\s\\S]*?)${END}"`, 'g'), (_, inner) => {
+        return JSON.parse(`"${inner}"`);
+    });
+}
+
+
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
 
@@ -123,8 +147,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                         const rawCpTransfers = allCpTransfers.filter(t =>
                                             t.contract?.toLowerCase() === contractLc
                                         );
-
-                                        console.log(`${cp}`, rawCpTransfers);
 
                                         const addrLc = address.toLowerCase();
                                         const cpLc = cp.toLowerCase();
@@ -279,32 +301,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
-
-                        const targetHashes = [
-                            '0xeede1753bc88395335b4686c8cbf3dcd8d0ac6f616adcb388bea1b01625b3dfe',
-                            '0x89f7be34a83770f84aea75501ca2e1965c42960467da34ff5f12d6f70ff4bd01',
-                            '0x515b34a2f63f2938c2693a81311a60fcb540148f95f66ffd9117ee3c70e319fc',
-                            '0xf56cf772c94f72d4ebf4f87b00aa53c54b785a6dd1087018c21f5bba2592f155',
-                            '0xf69c89e6b40a57645dc9b84391f7ae09a01668c4e948b77ab34d6c5237ff01e',
-                            '0xf5138e3091bcf58ad189f54435f9a8d9918cd8f31784181530af2866aa192a24',
-                            '0xdee815ca54e8d14e15f2d34363764b17fef3ec8c5aa7b2c74a56793d1150fb2c',
-                            '0xa0c6869ef88723718712dbff07df26796e452e7d2346e40d947c349f49a93305',
-                            '0xb1ed82cefb1c606b393e9612b1aeceef5223383b841307013d5c487c0e9e593a',
-                            '0x12f753d4cd057053070d0acf8c9d844d5cb61361f563ca5d761cdad87d670448',
-                            '0x813238e788b1736485f1acee2c99ca8d92f368738a9806b596e8403adf50ed37',
-                            '0x620685548c97ddbf5152e72ec194a77c9a0610a50e0c277226dcd94e47cf14d3',
-                        ];
-
-                        const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
-
-                        const matchingTransactions = transactionsHistory.filter(tx =>
-                            lowerCaseHashes.includes(tx.hash.toLowerCase())
-                        );
-
-                        matchingTransactions.forEach((tx, index) => {
-                            // console.log(`tx - ${index}`, tx);
-                        });
-
                         const tokenData = {};
                         for (const swap of allSwaps) {
                             const {bought, sold, transactionType} = swap;
@@ -449,9 +445,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             chain_id: cfg.chain,
                             active_chains: activeChains,
                             performance_score: null,
-                            roi_pct: '',
                             average_pnl: '',
-                            median_holding_hours: '',
                             first_transaction: {
                                 timestamp: firstTransaction?.block_timestamp,
                                 hash: firstTransaction?.hash,
@@ -520,7 +514,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 : null;
 
                             const isProfitable = stats.spent > 0 ? realizedPnl > 0 : null;
-                            const isRoiCalculated = stats.spent > 0;
 
                             // Count transfer directions and sum token amounts
                             let transferInAmountToken = 0;
@@ -598,7 +591,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 spent: Number(stats.spent.toFixed(3)),
                                 roi_pct_token: roiPctToken,
                                 is_profitable: isProfitable,
-                                is_roi_calculated: isRoiCalculated,
                                 pnl: {
                                     total: Number(realizedPnl.toFixed(2)),
                                     realized: Number(stats.received.toFixed(2)),
@@ -617,9 +609,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     buy_count: buyCount,
                                     sell_count: sellCount,
                                 },
-                                ...((buyCount > 0 && stats.received === 0 && stats.balance === 0 && outflowCount === 0) && {
-                                    note: 'excluded from ROI/accuracy due to zero cost basis'
-                                }),
                                 ...(stats.same_contracts) && {
                                     same_contracts: stats.same_contracts,
                                 }
@@ -683,8 +672,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             )
                             : null;
 
-                        addressData.roi_pct = sumSpent > 0 ? `${Math.round((sumPnL / sumSpent) * 100)}%` : null;
-
                         addressData.performance_score = {
                             token_accuracy_pct,
                             weighted_roi_pct,
@@ -704,7 +691,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         const filePath = `${addressData.average_pnl}${cfg.symbol.toLowerCase()} - ${address}.json`;
 
-                        fs.writeFileSync(filePath, JSON.stringify({[address]: addressData}, null, 2));
+                        fs.writeFileSync(filePath, stringifyWithInline({[address]: addressData}, ['pnl', 'transfers', 'trades'], 2));
 
                         await bot.sendDocument(chatId, filePath, {caption: `\`${address}\``, parse_mode: 'Markdown'});
 
@@ -767,7 +754,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             most_profitable_chain: bestChain,
                             summary_tags
                         },
-                        notes: "",
                         last_updated: new Date().toISOString()
                     }
                 };
