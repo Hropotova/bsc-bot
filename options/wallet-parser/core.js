@@ -631,54 +631,73 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         addressData.average_pnl = Number(overallAverage.toFixed(2));
 
                         // ====== Use only included tokens for performance score ======
-                        const tokens = Object.entries(addressData.traded_tokens).map(([k, v]) => ({contract: k, ...v}));
-                        const includedTokens = tokens.filter(t => t.include === true);
-                        const excludedTokens = tokens.filter(t => t.include === false);
+                        const ROI_CAP_HI = 1500;
+                        const ROI_CAP_LO = -100;
+                        const EPS_MEAN = 1e-6;
+                        const round2 = x => Math.round(x * 100) / 100;
 
-                        const totalSpent = includedTokens.reduce((sum, t) => sum + (t.spent || 0), 0);
+                        function roiConsistencyScore(traded_tokens) {
+                            if (!traded_tokens) return null;
 
-                        const token_accuracy_pct = includedTokens.length
-                            ? (includedTokens.filter(t => t.pnl.total > 0).length / includedTokens.length) * 100
-                            : null;
+                            const rois = Object.values(traded_tokens)
+                                .filter(t => t?.include === true && Number(t?.spent) > 0)
+                                .map(t => (Number(t.pnl?.total || 0) / Number(t.spent)) * 100)
+                                .filter(v => Number.isFinite(v))
+                                .map(v => Math.min(ROI_CAP_HI, Math.max(ROI_CAP_LO, v)));
 
-                        const avg_token_roi_pct = includedTokens.length
-                            ? includedTokens.reduce((sum, t) => sum + (t.pnl.total / (t.spent || 1)) * 100, 0) / includedTokens.length
-                            : null;
+                            if (rois.length < 2) return null;
 
-                        let roi_consistency_score = null;
-                        if (includedTokens.length >= 2) {
-                            const roiValues = includedTokens.map(t => (t.pnl.total / (t.spent || 1)) * 100);
-                            const mean = roiValues.reduce((a, b) => a + b, 0) / roiValues.length;
-                            const variance = roiValues.reduce((a, b) => a + (b - mean) ** 2, 0) / (roiValues.length - 1);
+                            const mean = rois.reduce((s, x) => s + x, 0) / rois.length;
+                            if (Math.abs(mean) < EPS_MEAN) return null;
+
+                            const variance = rois.reduce((s, x) => s + (x - mean) ** 2, 0) / (rois.length - 1);
                             const sd = Math.sqrt(variance);
-                            const cv = mean !== 0 ? (sd / mean) : Infinity;
-                            roi_consistency_score = isFinite(cv) ? Math.max(0, Math.min(10, 10 - cv * 2)) : 0;
+                            const cv = sd / Math.abs(mean);
+                            const score = 10 * (1 / (1 + cv));
+                            return round2(Math.max(0, Math.min(10, score)));
                         }
 
-                        const weighted_roi_score = totalSpent
-                            ? includedTokens.reduce((sum, t) => sum + ((t.pnl.total / (t.spent || 1)) * 100) * t.spent, 0) / totalSpent
+                        const tokens = Object.entries(addressData.traded_tokens || {})
+                            .map(([contract, v]) => ({contract, ...v}));
+                        const includedTokens = tokens.filter(t => t.include === true);
+                        const includedWithSpend = includedTokens.filter(t => Number(t.spent) > 0);
+
+                        const token_accuracy_pct = includedTokens.length
+                            ? round2((includedTokens.filter(t => Number(t.pnl?.total) > 0).length / includedTokens.length) * 100)
                             : null;
 
-                        // ROI % across included tokens only
-                        const sumSpentForROI = includedTokens.reduce((s, t) => s + (t.spent || 0), 0);
-                        const sumPnLForROI = includedTokens.reduce((s, t) => s + (t.pnl.total || 0), 0);
-                        addressData.roi_pct = sumSpentForROI > 0
-                            ? `${Number(((sumPnLForROI / sumSpentForROI) * 100).toFixed(0))}%`
+                        const sumSpent = includedWithSpend.reduce((s, t) => s + Number(t.spent || 0), 0);
+                        const sumPnL = includedWithSpend.reduce((s, t) => s + Number(t.pnl?.total || 0), 0);
+                        const weighted_roi_pct = sumSpent > 0 ? round2((sumPnL / sumSpent) * 100) : null;
+
+                        const roi_consistency_score = roiConsistencyScore(addressData.traded_tokens);
+
+                        const n_tokens_included = includedWithSpend.length;
+
+                        const avg_token_roi_pct = includedWithSpend.length
+                            ? round2(
+                                includedWithSpend.reduce(
+                                    (sum, t) => sum + ((Number(t.pnl?.total || 0) / Number(t.spent)) * 100),
+                                    0
+                                ) / includedWithSpend.length
+                            )
                             : null;
 
-                        // Add performance score to address data.
+                        addressData.roi_pct = sumSpent > 0 ? `${Math.round((sumPnL / sumSpent) * 100)}%` : null;
+
                         addressData.performance_score = {
-                            token_accuracy_pct: token_accuracy_pct != null ? Number(token_accuracy_pct.toFixed(2)) : null,
-                            avg_token_roi_pct: avg_token_roi_pct != null ? Number(avg_token_roi_pct.toFixed(2)) : null,
-                            roi_consistency_score: roi_consistency_score != null ? Number(roi_consistency_score.toFixed(2)) : null,
-                            weighted_roi_score: weighted_roi_score != null ? Number(weighted_roi_score.toFixed(2)) : null
+                            token_accuracy_pct,
+                            weighted_roi_pct,
+                            roi_consistency_score,
+                            n_tokens_included,
+                            avg_token_roi_pct
                         };
 
-                        // scoring_scope
                         addressData.scoring_scope = {
                             included_tokens: includedTokens.map(t => t.contract),
-                            excluded_tokens: excludedTokens.map(t => t.contract),
+                            excluded_tokens: tokens.filter(t => t.include === false).map(t => t.contract),
                         };
+
 
                         // Save result for this chain
                         chainResults[chainKey] = addressData;
