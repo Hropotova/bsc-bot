@@ -169,7 +169,6 @@ const getWalletHistory = async (address, chain, fromBlock = null, toBlock = null
                 (fromBlock != null ? `&from_block=${fromBlock}` : '') +
                 (toBlock   != null ? `&to_block=${toBlock}`     : '');
             const url = `${base}${range}${cursor ? `&cursor=${cursor}` : ''}`;
-            console.log('url', url)
             const resp = await rateLimiter.schedule(COST.history, () =>
                 fetchWithRetry(() => api.get(url))
             );
