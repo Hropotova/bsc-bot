@@ -149,20 +149,31 @@ const getWalletTokenSwaps = async (address, chain) => {
 };
 
 // Retrieve the full transaction history of a specified wallet address.
-const getWalletHistory = async (address, chain) => {
-    const key = `${address}:${chain}`;
+const getWalletHistory = async (address, chain, fromBlock = null, toBlock = null) => {
+    const legacyCall = (fromBlock == null && toBlock == null);
+    const key = legacyCall
+        ? `${address}:${chain}`
+        : `${address}:${chain}:${fromBlock ?? ''}:${toBlock ?? ''}`;
+
     if (historyCache.has(key)) {
         console.debug(`Cache hit: getWalletHistory(${key})`);
         return historyCache.get(key);
     }
+
     try {
         console.debug(`Moralis: Fetching transactions history for ${address} for chain ${chain}`);
         let cursor = null, allTx = [], total = 0;
         while (true) {
-            const url = `wallets/${address}/history?chain=${chain}&order=ASC${cursor ? `&cursor=${cursor}` : ''}`;
+            const base = `wallets/${address}/history?chain=${chain}&order=ASC`;
+            const range =
+                (fromBlock != null ? `&from_block=${fromBlock}` : '') +
+                (toBlock   != null ? `&to_block=${toBlock}`     : '');
+            const url = `${base}${range}${cursor ? `&cursor=${cursor}` : ''}`;
+            console.log('url', url)
             const resp = await rateLimiter.schedule(COST.history, () =>
                 fetchWithRetry(() => api.get(url))
             );
+
             const txs = resp.data.result || [];
             total += txs.length;
             if (total > +2000) {
@@ -170,6 +181,7 @@ const getWalletHistory = async (address, chain) => {
                 historyCache.set(key, 'TRANSACTIONS_COUNT_LIMIT');
                 return 'TRANSACTIONS_COUNT_LIMIT';
             }
+
             allTx.push(...txs);
             if (!resp.data.cursor || txs.length < 100) break;
             cursor = resp.data.cursor;
@@ -182,6 +194,7 @@ const getWalletHistory = async (address, chain) => {
         return [];
     }
 };
+
 
 // Get token balances for a specific wallet address.
 const getWalletTokenBalances = async (address, chain) => {

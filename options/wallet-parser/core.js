@@ -6,10 +6,11 @@ const {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
-    getWalletHistory, clearMoralisCache,
+    getWalletHistory,
+    clearMoralisCache,
 } = require('../../api/moralis');
 const {getCode} = require('../../api/moralis-rpc');
-const {getAllTransactions, clearScanCache} = require('../../api/scan');
+const {getAllTransactions, clearScanCache, getTokenTransfers} = require('../../api/scan');
 const {getDexscreenerTokenPrice, clearDexCache} = require('../../api/dexscreener');
 
 const {
@@ -134,8 +135,16 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
 
                                 if (cPtransactions.length < process.env.TRANSACTIONS_COUNT) {
-                                    const cpHistory = await getWalletHistory(cp, cfg.chain);
-                                    if (cpHistory !== 'TRANSACTIONS_COUNT_LIMIT') {
+                                    const cpTransactions = await getTokenTransfers(cp, contractLc, cfg.chain_id);
+                                    let cpHistory = [];
+                                    for (const t of cpTransactions) {
+                                        const hist = await getWalletHistory(cp, cfg.chain, Number(t.blockNumber), Number(t.blockNumber));
+                                        if (hist.some(tx => tx.hash.toLowerCase() === t.hash.toLowerCase())) {
+                                            cpHistory.push(hist[0]);
+                                        }
+                                    }
+
+                                    if (cpHistory) {
                                         const {swaps: allCpSwaps, transfers: allCpTransfers} =
                                             await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
 
