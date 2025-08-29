@@ -122,6 +122,7 @@ module.exports = {
             '0x2ae3f1ec7f1f5012cfeab0185bfc7aa3cf0dec22',
             '0xd9aaec86b65d86f6a7b5b1b0c42ffa531710b6ca',
             '0xb79dd08ea68a908a97220c76d19a6aa9cbde4376',
+            '0xc1cba3fcea344f92d9239c08c0568f6f2f0ee452',
         ],
     },
     avalanche: {
