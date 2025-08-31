@@ -100,7 +100,7 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 };
 
 // Scan API to retrieve all transactions for a given address on a specific chain, з кешем
-const getAllTransactions = async (address, chain_id, maxTx = +process.env.TRANSACTIONS_COUNT) => {
+const getAllTransactions = async (address, chain_id, maxTx = +process.env.SCAN_TRANSACTIONS_COUNT) => {
     const key = `${address}:${chain_id}:${maxTx}`;
     if (txCache.has(key)) {
         console.debug(`Cache hit: for getAllTransactions(${key})`);

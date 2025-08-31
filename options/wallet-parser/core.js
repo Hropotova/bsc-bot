@@ -80,13 +80,13 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                     // Get all transactions for the wallet address.
                     const transactions = await getAllTransactions(address, cfg.chain_id);
 
-                    if (transactions.length < process.env.TRANSACTIONS_COUNT) {
+                    if (transactions.length < process.env.SCAN_TRANSACTIONS_COUNT) {
                         // Get the full transaction history of a specified wallet address.
                         const transactionsHistory = await getWalletHistory(address, cfg.chain);
 
                         if (transactionsHistory === 'TRANSACTIONS_COUNT_LIMIT') {
                             await bot.sendMessage(chatId,
-                                `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``,
+                                `Transactions count address more then ${process.env.SCAN_TRANSACTIONS_COUNT} \n\`${address}\``,
                                 {parse_mode: 'MarkdownV2'}
                             );
                             continue;
@@ -141,7 +141,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                                 const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
 
-                                if (cPtransactions.length < process.env.TRANSACTIONS_COUNT) {
+                                if (cPtransactions.length < process.env.SCAN_TRANSACTIONS_COUNT) {
                                     const cpTransactions = await getTokenTransfers(cp, contractLc, cfg.chain_id);
                                     let cpHistory = [];
 
@@ -723,7 +723,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         clearDexCache();
                     } else {
                         await bot.sendMessage(chatId,
-                            `Transactions count address more then ${process.env.TRANSACTIONS_COUNT} \n\`${address}\``,
+                            `Transactions count address more then ${process.env.SCAN_TRANSACTIONS_COUNT} \n\`${address}\``,
                             {parse_mode: 'MarkdownV2'}
                         );
                     }
