@@ -10,8 +10,15 @@ const {
     clearMoralisCache,
 } = require('../../api/moralis');
 const {getCode} = require('../../api/moralis-rpc');
-const {getAllTransactions, clearScanCache, getTokenTransfers} = require('../../api/scan');
-const {getDexscreenerTokenPrice, clearDexCache} = require('../../api/dexscreener');
+const {
+    getAllTransactions,
+    getTokenTransfers,
+    clearScanCache,
+} = require('../../api/scan');
+const {
+    getDexscreenerTokenPrice,
+    clearDexCache,
+} = require('../../api/dexscreener');
 
 const {
     createHistorySwaps,
@@ -137,14 +144,19 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 if (cPtransactions.length < process.env.TRANSACTIONS_COUNT) {
                                     const cpTransactions = await getTokenTransfers(cp, contractLc, cfg.chain_id);
                                     let cpHistory = [];
-                                    for (const t of cpTransactions) {
-                                        const hist = await getWalletHistory(cp, cfg.chain, Number(t.blockNumber), Number(t.blockNumber));
-                                        if (hist.some(tx => tx.hash.toLowerCase() === t.hash.toLowerCase())) {
-                                            cpHistory.push(hist[0]);
+
+                                    if (cpTransactions.length > 10) {
+                                        cpHistory = await getWalletHistory(cp, cfg.chain);
+                                    } else {
+                                        for (const t of cpTransactions) {
+                                            const hist = await getWalletHistory(cp, cfg.chain, Number(t.blockNumber), Number(t.blockNumber));
+                                            if (hist.some(tx => tx.hash.toLowerCase() === t.hash.toLowerCase())) {
+                                                cpHistory.push(hist[0]);
+                                            }
                                         }
                                     }
 
-                                    if (cpHistory) {
+                                    if (cpHistory !== 'TRANSACTIONS_COUNT_LIMIT') {
                                         const {swaps: allCpSwaps, transfers: allCpTransfers} =
                                             await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
 
@@ -558,8 +570,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 }
                             }
 
-                            // UNMATCHED_TRANSFERS coverage:
-                            // Compare total transferred token amount vs token amount moved via swaps
                             const totalTransferredToken = transferInAmountToken + transferOutAmountToken;
                             const totalSwappedToken = (stats.spent_token || 0) + (stats.receive_token || 0);
                             let unmatchedTransfersFlag = false;
@@ -569,7 +579,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
 
                             const avgHoldingHours = averageHoldingHours(stats.trades);
-                            const earlyEntry = avgHoldingHours > 0 ? diffMinutes > 5 : null;
+                            const n = diffMinutes == null ? null : Number(diffMinutes);
+
+                            const earlyEntry = n == null ? null : n <= 5;
 
                             let include = true;
                             let exclude_reason = undefined;
