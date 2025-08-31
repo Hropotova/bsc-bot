@@ -161,13 +161,13 @@ const getWalletHistory = async (address, chain, fromBlock = null, toBlock = null
     }
 
     try {
-        console.debug(`Moralis: Fetching transactions history for ${address} for chain ${chain}`);
+        console.debug(`Moralis: Fetching transactions history for ${address} for chain ${chain} ${(fromBlock && toBlock) && `from block ${fromBlock} to block ${toBlock}`}`);
         let cursor = null, allTx = [], total = 0;
         while (true) {
             const base = `wallets/${address}/history?chain=${chain}&order=ASC`;
             const range =
                 (fromBlock != null ? `&from_block=${fromBlock}` : '') +
-                (toBlock   != null ? `&to_block=${toBlock}`     : '');
+                (toBlock != null ? `&to_block=${toBlock}` : '');
             const url = `${base}${range}${cursor ? `&cursor=${cursor}` : ''}`;
             const resp = await rateLimiter.schedule(COST.history, () =>
                 fetchWithRetry(() => api.get(url))
@@ -185,7 +185,7 @@ const getWalletHistory = async (address, chain, fromBlock = null, toBlock = null
             if (!resp.data.cursor || txs.length < 100) break;
             cursor = resp.data.cursor;
         }
-        console.debug(`Moralis: Fetched ${allTx.length} transactions history for ${address} for chain ${chain}`);
+        console.debug(`Moralis: Fetched ${allTx.length} transactions history for ${address} for chain ${chain} ${(fromBlock && toBlock) && `from block ${fromBlock} to block ${toBlock}`}`);
         historyCache.set(key, allTx);
         return allTx;
     } catch (err) {
