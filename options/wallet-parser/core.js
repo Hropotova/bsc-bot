@@ -56,6 +56,7 @@ function stringifyWithInline(obj, inlineKeys = ['pnl'], space = 2) {
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
+    const clusterStatsCache = {};
 
     // Process each wallet address one by one
     for (const address of splitAddresses) {
@@ -107,6 +108,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         let allSwaps = [...swaps];
                         let allTransfers = [...transfers];
                         const initialStats = {};
+                        const contractGroupMap = {};
 
                         for (const swap of swaps) {
                             const {bought, sold, transactionType} = swap;
@@ -194,7 +196,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                         const cpBuySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
 
                                         if (cpBuySwaps.length === 1 && totalSentToParent > 0) {
-                                            const onlySwap = {...cpSwaps[0]};
+                                            const onlySwap = {...cpBuySwaps[0]};
                                             const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
                                             const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
                                             const ratio = totalSentToParent / originalBought;
@@ -205,11 +207,13 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                                             allSwaps.push(onlySwap);
                                             allTransfers.push(...cpTransfers);
+                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                            contractGroupMap[contractLc] = groupId;
                                             continue;
                                         }
 
                                         if (cpBuySwaps.length > 1 && totalSentToParent > 0) {
-                                            const firstSwap = {...cpSwaps[0]};
+                                            const firstSwap = {...cpBuySwaps[0]};
                                             const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
 
                                             if (totalSentToParent >= firstBought) {
@@ -237,6 +241,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                                 allSwaps.push(firstSwap);
                                             }
                                             allTransfers.push(...cpTransfers);
+                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                            contractGroupMap[contractLc] = groupId;
                                             continue;
                                         }
 
@@ -307,6 +313,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                                 allSwaps.push(...cpSwaps);
                                                 allTransfers.push(...cpTransfers);
                                             }
+                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                            contractGroupMap[contractLc] = groupId;
                                         } else if (ratioIn > 0) {
                                             if (totalSentToParent > 0) {
                                                 const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
@@ -316,11 +324,50 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                                 allSwaps.push(...cpSwaps);
                                                 allTransfers.push(...cpTransfers);
                                             }
+                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                            contractGroupMap[contractLc] = groupId;
                                         }
                                     }
                                 }
                             }
                         }
+
+                        // dedupe swaps and transfers
+                        const dedupeSwaps = (swapsArr) => {
+                            const byKey = new Map();
+                            const magnitude = (x) => {
+                                const b = Math.abs(parseFloat(x?.bought?.amount ?? 0));
+                                const s = Math.abs(parseFloat(x?.sold?.amount ?? 0));
+                                return b + s;
+                            };
+                            for (const s of swapsArr) {
+                                const key = (s.transactionHash || s.hash || `${s.blockTimestamp}-${s.summary || ''}`).toLowerCase();
+                                const prev = byKey.get(key);
+                                if (!prev || magnitude(s) > magnitude(prev)) byKey.set(key, s);
+                            }
+                            return Array.from(byKey.values());
+                        };
+
+                        const dedupeTransfers = (transfersArr) => {
+                            const seen = new Set();
+                            const out = [];
+                            for (const t of transfersArr) {
+                                const key = [
+                                    (t.transactionHash || t.hash || '').toLowerCase(),
+                                    (t.contract || '').toLowerCase(),
+                                    (t.from || t.from_address || '').toLowerCase(),
+                                    (t.to || t.to_address || '').toLowerCase(),
+                                    String(t.value)
+                                ].join('|');
+                                if (seen.has(key)) continue;
+                                seen.add(key);
+                                out.push(t);
+                            }
+                            return out;
+                        };
+
+                        allSwaps = dedupeSwaps(allSwaps);
+                        allTransfers = dedupeTransfers(allTransfers);
 
                         const tokenData = {};
                         for (const swap of allSwaps) {
@@ -431,7 +478,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         // Remove tokens with no inflow and no trades.
                         for (const [contract, stats] of Object.entries(tokenData)) {
-                            const inflowCount = allTransfers.filter(t => t.category === 'receive' || t.category === 'token receive').length;
+                            const inflowCount = allTransfers
+                                .filter(t =>
+                                    (t.contract?.toLowerCase() === contract) &&
+                                    (t.category === 'receive' || t.category === 'token receive')
+                                ).length;
 
                             const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                             const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
@@ -607,7 +658,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 exclude_reason = 'DATA_MISTAKE';
                             }
 
-                            addressData.traded_tokens[contract] = {
+                            const tokenEntry = {
                                 symbol: stats.symbol,
                                 spent: Number(stats.spent.toFixed(3)),
                                 roi_pct_token: roiPctToken,
@@ -634,6 +685,16 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     same_contracts: stats.same_contracts,
                                 }
                             };
+
+                            const gid = contractGroupMap[contract.toLowerCase()];
+                            if (gid && clusterStatsCache[gid]) {
+                                addressData.traded_tokens[contract] = JSON.parse(JSON.stringify(clusterStatsCache[gid]));
+                            } else {
+                                addressData.traded_tokens[contract] = tokenEntry;
+                                if (gid) {
+                                    clusterStatsCache[gid] = JSON.parse(JSON.stringify(tokenEntry));
+                                }
+                            }
                         }
 
                         const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
