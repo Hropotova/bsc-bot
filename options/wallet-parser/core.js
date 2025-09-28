@@ -124,6 +124,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
+                        const thirdPartyCpTransfers = new Set();
+
                         for (const [contract] of Object.entries(initialStats)) {
                             const contractLc = contract.toLowerCase();
 
@@ -135,7 +137,17 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     .map(a => a.toLowerCase())
                             )];
 
-                            if (counterparties.length === 1) {
+                            const checks = await Promise.all(
+                                counterparties.map(async cp => {
+                                    const code = await getCode(cp, cfg.rpc_url, cfg.chain);
+                                    const isEOA = code === '0x' || code === '0x0';
+                                    return {isEOA};
+                                })
+                            );
+
+                            const eoaCount = checks.filter(x => x.isEOA).length;
+
+                            if (eoaCount === 1) {
                                 const cp = counterparties[0];
                                 const code = await getCode(cp, cfg.rpc_url, cfg.chain);
                                 const isEOA = code === '0x' || code === '0x0';
@@ -184,6 +196,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                                 if (getTo(t) === cpLc) clone.to = address;
                                                 return clone;
                                             });
+
+                                        if (cpTransfers.length > 0) {
+                                            thirdPartyCpTransfers.add(contractLc);
+                                        }
 
                                         const totalSentToParent = allCpTransfers
                                             .filter(t =>
@@ -256,7 +272,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                             });
 
                                         const spent = initialStats[contract].spent_token;
-                                        const received = initialStats[contract].receive_token;
+                                        const received = Math.abs(initialStats[contract].receive_token);
 
                                         const ratioOut = spent > 0 ? Math.min(1, outAmt / spent) : 0;
                                         const ratioIn = spent === 0 ? Math.min(1, inAmt / received) : 0;
@@ -368,6 +384,21 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         allSwaps = dedupeSwaps(allSwaps);
                         allTransfers = dedupeTransfers(allTransfers);
+
+                        const targetHashes = [
+                            '0x9ead214cdd634f54ba3dab21e6bb1de562d44d3603c78ea21ee13b1549bb571e',
+                            '0x97c8656c34ae63e64ce8c6414205e3fe8867d63e38ae253fa4061b42612362cb',
+                        ];
+
+                        const lowerCaseHashes = targetHashes.map(h => h.toLowerCase());
+
+                        const matchingTransactions = swaps.filter(tx =>
+                            lowerCaseHashes.includes(tx.transactionHash.toLowerCase())
+                        );
+
+                        matchingTransactions.forEach(tx => {
+                            console.log('tx', tx);
+                        });
 
                         const tokenData = {};
                         for (const swap of allSwaps) {
@@ -588,19 +619,14 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const isProfitable = stats.spent > 0 ? realizedPnl > 0 : null;
 
                             // Count transfer directions and sum token amounts
-                            let transferInAmountToken = 0;
-                            let transferOutAmountToken = 0;
                             let hasContractTransfer = false;
 
                             for (const transfer of tokenTransfers) {
-                                const v = Math.abs(parseFloat(transfer.value));
                                 if (['send', 'token send'].includes(transfer.category)) {
                                     outflowCount++;
-                                    transferOutAmountToken += v;
                                 }
                                 if (['receive', 'token receive'].includes(transfer.category)) {
                                     inflowCount++;
-                                    transferInAmountToken += v;
                                 }
                             }
 
@@ -621,12 +647,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 }
                             }
 
-                            const totalTransferredToken = transferInAmountToken + transferOutAmountToken;
-                            const totalSwappedToken = (stats.spent_token || 0) + (stats.receive_token || 0);
                             let unmatchedTransfersFlag = false;
-                            if (totalTransferredToken > 0) {
-                                const coverage = Math.min(totalSwappedToken, totalTransferredToken) / totalTransferredToken;
-                                if (coverage < 0.75) unmatchedTransfersFlag = true;
+
+                            if (thirdPartyCpTransfers.has(contract.toLowerCase())) {
+                                unmatchedTransfersFlag = true;
                             }
 
                             const avgHoldingHours = averageHoldingHours(stats.trades);
