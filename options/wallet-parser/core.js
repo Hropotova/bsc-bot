@@ -71,11 +71,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 const cfg = config[chainKey];
                 if (!cfg) continue;
 
-                const code = await getCode(address, cfg.rpc_url, cfg.chain);
-
-                // console.debug('Moralis: Address code', code);
-
-                const isAddress = code === '0x' || code === '0x0';
+                const isAddress = await getCode(address, cfg.rpc_url, cfg.chain);
 
                 if (isAddress) {
                     // Get all transactions for the wallet address.
@@ -125,6 +121,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         const thirdPartyCpTransfers = new Set();
+                        const cpsCountByContract = new Map();
 
                         for (const [contract] of Object.entries(initialStats)) {
                             const contractLc = contract.toLowerCase();
@@ -139,18 +136,16 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             const checks = await Promise.all(
                                 counterparties.map(async cp => {
-                                    const code = await getCode(cp, cfg.rpc_url, cfg.chain);
-                                    const isEOA = code === '0x' || code === '0x0';
-                                    return {isEOA};
+                                    return await getCode(cp, cfg.rpc_url, cfg.chain);
                                 })
                             );
 
-                            const eoaCount = checks.filter(x => x.isEOA).length;
+                            const cpsCount = checks.filter(x => x).length;
+                            cpsCountByContract.set(contractLc, cpsCount);
 
-                            if (eoaCount === 1) {
+                            if (cpsCount === 1) {
                                 const cp = counterparties[0];
-                                const code = await getCode(cp, cfg.rpc_url, cfg.chain);
-                                const isEOA = code === '0x' || code === '0x0';
+                                const isEOA = await getCode(cp, cfg.rpc_url, cfg.chain);
                                 if (!isEOA) continue;
 
                                 const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
@@ -565,17 +560,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             traded_tokens: {},
                         };
 
-                        let sumRealizedPnls = 0;
-                        let tokenCount = 0;
-
-                        const isEOAAddress = async (addr) => {
-                            try {
-                                const c = await getCode(addr, cfg.rpc_url, cfg.chain);
-                                return (c === '0x' || c === '0x0');
-                            } catch (e) {
-                                return true;
-                            }
-                        };
+                        // Values for calculating average PnL only for include === true.
+                        let sumIncludedPnls = 0;
+                        let includedTokenCount = 0;
 
                         for (const [contract, stats] of Object.entries(tokenData)) {
                             let inflowCount = 0;
@@ -609,8 +596,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                             const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
-                            sumRealizedPnls += realizedPnl;
-                            tokenCount++;
+                            // if there are no buys, set diffMinutes to null.
+                            if (buyCount === 0) {
+                                diffMinutes = null;
+                            }
 
                             const roiPctToken = stats.spent > 0
                                 ? Number(((realizedPnl / stats.spent) * 100).toFixed(2))
@@ -618,15 +607,30 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             const isProfitable = stats.spent > 0 ? realizedPnl > 0 : null;
 
-                            // Count transfer directions and sum token amounts
+                            // Variables for determining the number of tokens received during transfers with contracts
+                            let tokenInTransferToContract = 0;
+                            let tokenOutTransferToContract = 0;
+
                             let hasContractTransfer = false;
 
                             for (const transfer of tokenTransfers) {
+
+                                const v = Math.abs(parseFloat(transfer.value));
                                 if (['send', 'token send'].includes(transfer.category)) {
                                     outflowCount++;
+
+                                    const isAddress = await getCode(transfer.from, cfg.rpc_url, cfg.chain);
+                                    if (!isAddress) {
+                                        tokenOutTransferToContract += v;
+                                    }
                                 }
                                 if (['receive', 'token receive'].includes(transfer.category)) {
                                     inflowCount++;
+
+                                    const isAddress = await getCode(transfer.from, cfg.rpc_url, cfg.chain);
+                                    if (!isAddress) {
+                                        tokenInTransferToContract += v;
+                                    }
                                 }
                             }
 
@@ -640,23 +644,26 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             )];
 
                             for (const toAddr of outRecipients) {
-                                const eoa = await isEOAAddress(toAddr);
-                                if (!eoa) { // it is a contract
+                                const eoa = await getCode(toAddr, cfg.rpc_url, cfg.chain);
+                                if (!eoa) {
                                     hasContractTransfer = true;
                                     break;
                                 }
                             }
 
+
                             let unmatchedTransfersFlag = false;
 
-                            if (thirdPartyCpTransfers.has(contract.toLowerCase())) {
+                            // If tokenOutTransferToContract <= 75% of tokenInTransferToContract.
+
+                            const threshold = tokenInTransferToContract * 0.75;
+                            const includeTransaction = tokenOutTransferToContract <= threshold && (tokenInTransferToContract > 0 || tokenOutTransferToContract > 0);
+
+                            const cps = cpsCountByContract.get(contract.toLowerCase()) ?? 0;
+
+                            if (cps > 1 || thirdPartyCpTransfers.has(contract.toLowerCase()) || includeTransaction) {
                                 unmatchedTransfersFlag = true;
                             }
-
-                            const avgHoldingHours = averageHoldingHours(stats.trades);
-                            const n = diffMinutes == null ? null : Number(diffMinutes);
-
-                            const earlyEntry = n == null ? null : n <= 5;
 
                             let include = true;
                             let exclude_reason = undefined;
@@ -681,6 +688,17 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 include = false;
                                 exclude_reason = 'DATA_MISTAKE';
                             }
+
+                            // The average PNL should be calculated based on tokens with "include": true.
+                            if (include === true) {
+                                sumIncludedPnls += realizedPnl;
+                                includedTokenCount++;
+                            }
+
+                            // Calculate average holding time in hours.
+                            const avgHoldingHours = averageHoldingHours(stats.trades);
+                            const n = diffMinutes == null ? null : Number(diffMinutes);
+                            const earlyEntry = n == null ? null : n <= 5;
 
                             const tokenEntry = {
                                 symbol: stats.symbol,
@@ -721,9 +739,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
-                        const overallAverage = tokenCount ? sumRealizedPnls / tokenCount : 0;
+                        // Calculate overall average PnL for the address
+                        const overallAverageIncluded = includedTokenCount
+                            ? (sumIncludedPnls / includedTokenCount)
+                            : 0;
 
-                        addressData.average_pnl = Number(overallAverage.toFixed(2));
+                        addressData.average_pnl = Number(overallAverageIncluded.toFixed(2));
 
                         // ====== Use only included tokens for performance score ======
                         const ROI_CAP_HI = 1500;
@@ -754,7 +775,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         const tokens = Object.entries(addressData.traded_tokens || {})
                             .map(([contract, v]) => ({contract, ...v}));
+
                         const includedTokens = tokens.filter(t => t.include === true);
+
                         const includedWithSpend = includedTokens.filter(t => Number(t.spent) > 0);
 
                         const token_accuracy_pct = includedTokens.length

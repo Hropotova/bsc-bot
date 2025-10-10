@@ -18,7 +18,7 @@ const getCode = async (address, rpcUrl, chain) => {
             params: [address, 'latest']
         });
         console.debug(`Moralis: Fetched check code if contract for ${address}`);
-        return response.data.result;
+        return (response.data.result === '0x' || response.data.result === '0x0');
     } catch (err) {
         console.error(`Error fetching ${chain} node:`, err);
         return null;

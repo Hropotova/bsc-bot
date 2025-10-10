@@ -2,12 +2,6 @@ const {getCode} = require("../../api/moralis-rpc");
 const associatedAddresses = async (address, transactions, cfg) => {
     const counterMap = {};
 
-    const isEOA = async (addr) => {
-        const code = await getCode(addr, cfg.rpc_url, cfg.chain);
-        const eoa = code === '0x' || code === '0x0';
-        return eoa;
-    };
-
     function formatUnitsManual(value, decimals = 18) {
         let s = value.toString();
         if (s.length <= decimals) s = s.padStart(decimals + 1, '0');
@@ -34,7 +28,7 @@ const associatedAddresses = async (address, transactions, cfg) => {
                 const counterparty = to?.toLowerCase();
                 if (!counterparty) continue;
 
-                if (!(await isEOA(counterparty))) continue;
+                if (!(await getCode(counterparty, cfg.rpc_url, cfg.chain))) continue;
 
                 if (!counterMap[counterparty]) {
                     counterMap[counterparty] = {direction: 'out', count: 0};
@@ -47,7 +41,7 @@ const associatedAddresses = async (address, transactions, cfg) => {
                 const counterparty = from?.toLowerCase();
                 if (!counterparty) continue;
 
-                if (!(await isEOA(counterparty))) continue;
+                if (!(await getCode(counterparty, cfg.rpc_url, cfg.chain))) continue;
 
                 if (!counterMap[counterparty]) {
                     counterMap[counterparty] = {direction: 'in', count: 0};
