@@ -530,7 +530,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         if (cfg.chain === 'base') mergeVirtualTokens(tokenData);
 
                         // Get transaction frequency for address.
-                        const transaction_frequency = transactionsFrequency(address, transactionsHistory);
+                        const transaction_frequency = transactionsFrequency(address, transactionsHistory, swaps);
 
                         // Get associated addresses.
                         const associated_addresses = await associatedAddresses(address, transactionsHistory, cfg);
