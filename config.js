@@ -8,6 +8,7 @@ const rpcArbitrumUrl = process.env.MORALIS_RPC_ARBITRUM_URL;
 
 module.exports = {
     eth: {
+        chain_name: 'ETH',
         chain: 'eth',
         chain_id: 1,
         dexscreener_chain_id: 'ethereum',
@@ -59,6 +60,7 @@ module.exports = {
         ],
     },
     bsc: {
+        chain_name: 'BSC',
         chain: 'bsc',
         chain_id: 56,
         dexscreener_chain_id: 'bsc',
@@ -104,6 +106,7 @@ module.exports = {
         ],
     },
     base: {
+        chain_name: 'BASE',
         chain: 'base',
         chain_id: 8453,
         dexscreener_chain_id: 'base',
@@ -144,6 +147,7 @@ module.exports = {
         ],
     },
     avalanche: {
+        chain_name: 'AVAX',
         chain: 'avalanche',
         chain_id: 43114,
         dexscreener_chain_id: 'avalanche',
@@ -201,6 +205,7 @@ module.exports = {
         ],
     },
     arbitrum: {
+        chain_name: 'ARB',
         chain: 'arbitrum',
         chain_id: 42161,
         dexscreener_chain_id: 'arbitrum',

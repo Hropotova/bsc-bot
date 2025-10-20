@@ -1,7 +1,7 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const THROUGHPUT_CU_PER_SEC = 1500; // Total available CUs per second
+const THROUGHPUT_CU_PER_SEC = 2000; // Total available CUs per second
 const MAX_REQUESTS_PER_SEC = 50;    // Global request limit
 
 // Cost in CUs for each endpoint

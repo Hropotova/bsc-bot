@@ -1,5 +1,4 @@
 require('dotenv').config();
-const fs = require('fs');
 const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 
@@ -18,34 +17,89 @@ function showModeButtons(chatId) {
     const opts = {
         reply_markup: JSON.stringify({
             inline_keyboard: [
-                [{text: 'Chain ID', callback_data: 'chain_id'}],
-                [{text: 'Active Chains', callback_data: 'active_chains'}],
-            ]
-        })
+                [{text: 'Chain ID', callback_data: 'mode:chain_id'}],
+                [{text: 'Active Chains', callback_data: 'mode:active_chains'}],
+            ],
+        }),
     };
-    bot.sendMessage(chatId, 'Please select an operation mode:', opts);
+    bot.sendMessage(chatId, 'Select an operation mode:', opts);
 }
 
-bot.onText(/\/start/, msg => showModeButtons(msg.chat.id));
-bot.onText(/\/change/, msg => showModeButtons(msg.chat.id));
+function buildChainsKeyboard() {
+    const entries = Object.entries(config);
+    const rows = [];
 
-bot.on('callback_query', async ({message, data}) => {
-    const chatId = message.chat.id;
+    for (let i = 0; i < entries.length; i += 2) {
+        const row = [];
 
-    if (data === 'chain_id') {
-        userState[chatId] = {mode: 'chain_id'};
-        return bot.sendMessage(chatId, 'Enter the chain ID (e.g., bsc, eth, base, avalanche, arbitrum):');
+        const [key1, val1] = entries[i];
+        row.push({
+            text: val1.chain_name ?? key1.toUpperCase(),
+            callback_data: `set_chain:${key1}`,
+        });
+
+        if (entries[i + 1]) {
+            const [key2, val2] = entries[i + 1];
+            row.push({
+                text: val2.chain_name ?? key2.toUpperCase(),
+                callback_data: `set_chain:${key2}`,
+            });
+        }
+
+        rows.push(row);
     }
 
-    if (data === 'active_chains') {
-        userState[chatId] = {mode: 'active_chains'};
-        return bot.sendMessage(chatId, 'Now send one or more wallet addresses:');
+    return {
+        reply_markup: JSON.stringify({
+            inline_keyboard: rows,
+        }),
+    };
+}
+
+bot.onText(/\/start/, (msg) => showModeButtons(msg.chat.id));
+bot.onText(/\/change/, (msg) => showModeButtons(msg.chat.id));
+
+bot.on('callback_query', async ({message, data, id}) => {
+    try {
+        const chatId = message.chat.id;
+
+        if (data === 'mode:chain_id') {
+            userState[chatId] = {mode: 'chain_id'};
+            const chainKb = buildChainsKeyboard();
+            return bot.sendMessage(chatId, 'Select a chain:', chainKb);
+        }
+
+        if (data === 'mode:active_chains') {
+            userState[chatId] = {mode: 'active_chains'};
+            return bot.sendMessage(chatId, 'Send one or more wallet addresses:');
+        }
+
+        if (data.startsWith('set_chain:')) {
+            const chainKey = data.split(':')[1];
+            if (!config[chainKey]) {
+                return bot.sendMessage(
+                    chatId,
+                    'Unknown chain ID. Available options: ' + Object.keys(config).join(', ')
+                );
+            }
+
+            userState[chatId] = {mode: 'chain_id', chain: chainKey};
+            const displayName = config[chainKey].chain_name ?? chainKey.toUpperCase();
+            return bot.sendMessage(
+                chatId,
+                `Chain ID set to '${displayName}'. Send one or more wallet addresses:`
+            );
+        }
+
+        if (id) bot.answerCallbackQuery(id);
+    } catch (e) {
+        console.error('callback_query error:', e);
     }
 });
 
-bot.on('text', async msg => {
+bot.on('text', async (msg) => {
     const chatId = msg.chat.id;
-    const text = msg.text.trim();
+    const text = (msg.text || '').trim();
 
     if (text.startsWith('/start') || text.startsWith('/change')) {
         return;
@@ -57,22 +111,12 @@ bot.on('text', async msg => {
     }
 
     try {
-        if (state.mode === 'chain_id' && !state.chain) {
-            const chainKey = text.toLowerCase();
-            if (!config[chainKey]) {
-                return bot.sendMessage(
-                    chatId,
-                    'Unknown chain ID. Available options: ' + Object.keys(config).join(', ')
-                );
+        if (state.mode === 'chain_id') {
+            if (!state.chain) {
+                const chainKb = buildChainsKeyboard();
+                return bot.sendMessage(chatId, 'Select a chain:', chainKb);
             }
-            state.chain = chainKey;
-            return bot.sendMessage(
-                chatId,
-                `Chain ID set to '${chainKey}'. Now send one or more wallet addresses:`
-            );
-        }
 
-        if (state.mode === 'chain_id' && state.chain) {
             await walletParserSingleChain(text, bot, chatId, state.chain);
             delete userState[chatId];
             return showModeButtons(chatId);
@@ -83,12 +127,11 @@ bot.on('text', async msg => {
             delete userState[chatId];
             return showModeButtons(chatId);
         }
-
     } catch (err) {
         console.error('Error handling message:', err);
-        await bot.sendMessage(chatId, 'An error occurred. Please try again later.');
+        await bot.sendMessage(chatId, 'An error occurred. Try again later.');
         delete userState[chatId];
-        showModeButtons(chatId);
+        return showModeButtons(chatId);
     }
 });
 

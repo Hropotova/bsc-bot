@@ -53,6 +53,23 @@ function stringifyWithInline(obj, inlineKeys = ['pnl'], space = 2) {
     });
 }
 
+function getOldestBuyTimestamp(trades) {
+    let oldestTs = null;
+
+    for (const t of trades || []) {
+        if (t && t.transactionType === 'buy' && t.blockTimestamp) {
+            const ts = Date.parse(t.blockTimestamp);
+            if (!Number.isNaN(ts)) {
+                if (oldestTs === null || ts < oldestTs) {
+                    oldestTs = ts;
+                }
+            }
+        }
+    }
+
+    return oldestTs !== null ? new Date(oldestTs).toISOString() : null;
+}
+
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
@@ -699,6 +716,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const avgHoldingHours = averageHoldingHours(stats.trades);
                             const n = diffMinutes == null ? null : Number(diffMinutes);
                             const earlyEntry = n == null ? null : n <= 5;
+                            const firstBuyTs = getOldestBuyTimestamp(stats.trades);
 
                             const tokenEntry = {
                                 symbol: stats.symbol,
@@ -712,6 +730,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 },
                                 avg_holding_hours: avgHoldingHours,
                                 minutes_after_launch_to_buy: diffMinutes,
+                                first_buy_ts: firstBuyTs,
                                 early_entry: earlyEntry,
                                 transfers: {
                                     inflow_count: inflowCount,
