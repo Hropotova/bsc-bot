@@ -1,5 +1,7 @@
 const axios = require('axios');
 const config = require('../../config');
+const http = require('http');
+const https = require('https');
 
 const JSON_MIME = 'application/json';
 
@@ -28,7 +30,7 @@ function getChainConf(chainKey) {
             `Config for "${chainKey}" must contain dextools_parse_url and dexscreener_parse_url`
         );
     }
-    return { chain_id, dextools_prefix, dexscreener_prefix };
+    return {chain_id, dextools_prefix, dexscreener_prefix};
 }
 
 async function processTokenContract(contract, bot, chatId, chainKey) {
@@ -39,17 +41,26 @@ async function processTokenContract(contract, bot, chatId, chainKey) {
             return;
         }
 
-        const { chain_id, dextools_prefix, dexscreener_prefix } = getChainConf(chainKey);
+        const {chain_id, dextools_prefix, dexscreener_prefix} = getChainConf(chainKey);
         const dextools_parse_url = `${dextools_prefix}${input}`;
         const dexscreener_parse_url = `${dexscreener_prefix}${input}`;
 
         const COLLECTOR_URL = process.env.COLLECTOR_URL || 'http://157.245.176.230:3333';
 
+        const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 100 });
+        const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 100 });
+
         // ЛИШЕ JSON
         const jsonRes = await axios.post(
             `${COLLECTOR_URL}/collect`,
-            { dextools_parse_url, dexscreener_parse_url, chain_id },
-            { timeout: 60_000 }
+            {dextools_parse_url, dexscreener_parse_url, chain_id},
+            {
+                timeout: 0,
+                httpAgent,
+                httpsAgent,
+                maxBodyLength: Infinity,
+                maxContentLength: Infinity,
+            }
         );
 
         const pretty = JSON.stringify(jsonRes.data, null, 2);
@@ -59,13 +70,14 @@ async function processTokenContract(contract, bot, chatId, chainKey) {
         await bot.sendDocument(
             chatId,
             Buffer.from(pretty, 'utf8'),
-            { caption: `Addresses JSON (chain ${chain_id})` },
-            { filename, contentType: JSON_MIME }
+            {caption: `Addresses JSON (chain ${chain_id})`},
+            {filename, contentType: JSON_MIME}
         );
     } catch (e) {
+        console.log('e', e)
         console.error('processTokenContract error:', e?.response?.data || e.message || e);
         await bot.sendMessage(chatId, 'Sourcer: error while processing the contract.');
     }
 }
 
-module.exports = { processTokenContract };
+module.exports = {processTokenContract};
