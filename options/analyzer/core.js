@@ -139,6 +139,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         const thirdPartyCpTransfers = new Set();
                         const cpsCountByContract = new Map();
+                        const cpBalancesByToken = {};
 
                         for (const [contract] of Object.entries(initialStats)) {
                             const contractLc = contract.toLowerCase();
@@ -166,6 +167,18 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 if (!isEOA) continue;
 
                                 const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
+                                const cpBalances = await getWalletTokenBalances(cp, cfg.chain);
+
+                                // Знаходимо баланс потрібного токена
+                                const cpTokenBalance = cpBalances.find(
+                                    b => b.token_address?.toLowerCase() === contractLc
+                                );
+
+                                console.log('cpTokenBalance', cpTokenBalance)
+
+                                if (cpTokenBalance) {
+                                    cpBalancesByToken[contractLc] = cpTokenBalance?.usd_value / usdPrice;
+                                }
 
                                 if (cPtransactions.length < process.env.SCAN_TRANSACTIONS_COUNT) {
                                     const cpTransactions = await getTokenTransfers(cp, contractLc, cfg.chain_id);
@@ -502,7 +515,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             return `${intPart}${fracPart ? '.' + fracPart : ''}`;
                         }
 
-
                         for (const token of balances) {
                             const addr = token.token_address;
                             if (!tokenData[addr]) continue;
@@ -517,6 +529,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
 
                             tokenData[addr].balance = usdValue / usdPrice;
+                        }
+
+                        for (const [contractAddr, cpBalance] of Object.entries(cpBalancesByToken)) {
+                            if (tokenData[contractAddr]) {
+                                tokenData[contractAddr].balance += cpBalance;
+                            }
                         }
 
                         // Remove tokens with no inflow and no trades.
