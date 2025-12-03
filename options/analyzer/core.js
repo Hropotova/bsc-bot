@@ -78,6 +78,15 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     // Process each wallet address one by one
     for (const address of splitAddresses) {
         try {
+            // Skip ERC-4337 EntryPoint addresses (they have massive transaction counts)
+            if (address.toLowerCase().startsWith('0x4337')) {
+                await bot.sendMessage(chatId,
+                    `ERC4337  address \n\`${address}\``,
+                    {parse_mode: 'MarkdownV2'}
+                );
+                continue;
+            }
+
             // Get the active chains for a wallet address.
             const activeChains = await getActiveWalletChains(address);
 
