@@ -10,14 +10,12 @@ const api = axios.create({
 
 const getCode = async (address, rpcUrl, chain) => {
     try {
-        console.debug(`Moralis: Fetching check code if contract for ${address}`);
         const response = await api.post(rpcUrl, {
             jsonrpc: '2.0',
             id: 1,
             method: 'eth_getCode',
             params: [address, 'latest']
         });
-        console.debug(`Moralis: Fetched check code if contract for ${address}`);
         console.log('is code', (response.data.result === '0x' || response.data.result === '0x0'))
         return (response.data.result === '0x' || response.data.result === '0x0');
     } catch (err) {

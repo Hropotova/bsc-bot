@@ -30,6 +30,38 @@ const {
 
 const config = require('../../config.js');
 
+// Concurrency control for parallel operations
+const PARALLEL_BATCH_SIZE = 10;
+const PARALLEL_CONTRACT_BATCH = 5;
+
+// Helper to run promises in batches with concurrency limit
+async function runInBatches(items, fn, batchSize = PARALLEL_BATCH_SIZE) {
+    const results = [];
+    for (let i = 0; i < items.length; i += batchSize) {
+        const batch = items.slice(i, i + batchSize);
+        const batchResults = await Promise.all(batch.map(fn));
+        results.push(...batchResults);
+    }
+    return results;
+}
+
+// Cache for getCode results to avoid duplicate RPC calls
+const codeCache = new Map();
+
+async function getCodeCached(address, rpcUrl, chain) {
+    const key = `${address.toLowerCase()}:${chain}`;
+    if (codeCache.has(key)) {
+        return codeCache.get(key);
+    }
+    const result = await getCode(address, rpcUrl, chain);
+    codeCache.set(key, result);
+    return result;
+}
+
+function clearCodeCache() {
+    codeCache.clear();
+}
+
 function stringifyWithInline(obj, inlineKeys = ['pnl'], space = 2) {
     const START = '__INLINE__';
     const END = '__END__';
@@ -70,6 +102,94 @@ function getOldestBuyTimestamp(trades) {
     return oldestTs !== null ? new Date(oldestTs).toISOString() : null;
 }
 
+// Helper function to process counterparty data
+async function processCounterparty(cp, contractLc, address, cfg, usdPrice, transfers) {
+    const addrLc = address.toLowerCase();
+    const cpLc = cp.toLowerCase();
+
+    const [isEOA, cPtransactions, cpBalances] = await Promise.all([
+        getCodeCached(cp, cfg.rpc_url, cfg.chain),
+        getAllTransactions(cp, cfg.chain_id),
+        getWalletTokenBalances(cp, cfg.chain)
+    ]);
+
+    if (!isEOA) return null;
+
+    // Find token balance
+    const cpTokenBalance = cpBalances.find(
+        b => b.token_address?.toLowerCase() === contractLc
+    );
+
+    const cpBalance = cpTokenBalance ? cpTokenBalance?.usd_value / usdPrice : 0;
+
+    if (cPtransactions.length >= process.env.SCAN_TRANSACTIONS_COUNT) {
+        return {cpBalance, swaps: [], transfers: [], processed: false};
+    }
+
+    const cpTransactions = await getTokenTransfers(cp, contractLc, cfg.chain_id);
+    let cpHistory = [];
+
+    if (cpTransactions.length > 10) {
+        cpHistory = await getWalletHistory(cp, cfg.chain);
+    } else {
+        // Parallel fetch of history for each transaction
+        const historyPromises = cpTransactions.map(async t => {
+            const hist = await getWalletHistory(cp, cfg.chain, Number(t.blockNumber), Number(t.blockNumber));
+            if (hist !== 'TRANSACTIONS_COUNT_LIMIT' && hist.some(tx => tx.hash.toLowerCase() === t.hash.toLowerCase())) {
+                return hist[0];
+            }
+            return null;
+        });
+        const historyResults = await Promise.all(historyPromises);
+        cpHistory = historyResults.filter(Boolean);
+    }
+
+    if (cpHistory === 'TRANSACTIONS_COUNT_LIMIT') {
+        return {cpBalance, swaps: [], transfers: [], processed: false};
+    }
+
+    const {swaps: allCpSwaps, transfers: allCpTransfers} =
+        await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
+
+    const cpSwaps = allCpSwaps.filter(s =>
+        s.bought.address?.toLowerCase() === contractLc ||
+        s.sold.address?.toLowerCase() === contractLc
+    );
+
+    const rawCpTransfers = allCpTransfers.filter(t =>
+        t.contract?.toLowerCase() === contractLc
+    );
+
+    const getFrom = (t) => (t.from ?? t.from_address ?? '').toLowerCase();
+    const getTo = (t) => (t.to ?? t.to_address ?? '').toLowerCase();
+
+    const cpTransfers = rawCpTransfers
+        .filter(t => getFrom(t) !== addrLc && getTo(t) !== addrLc)
+        .map(t => {
+            const clone = {...t};
+            if (getFrom(t) === cpLc) clone.from = address;
+            if (getTo(t) === cpLc) clone.to = address;
+            return clone;
+        });
+
+    const totalSentToParent = allCpTransfers
+        .filter(t =>
+            t.contract?.toLowerCase() === contractLc &&
+            getFrom(t) === cpLc &&
+            getTo(t) === addrLc
+        )
+        .reduce((sum, t) => sum + Math.abs(parseFloat(t.value)), 0);
+
+    return {
+        cpBalance,
+        cpSwaps,
+        cpTransfers,
+        allCpTransfers,
+        totalSentToParent,
+        hasThirdPartyTransfers: cpTransfers.length > 0,
+        processed: true
+    };
+}
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
@@ -97,7 +217,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 const cfg = config[chainKey];
                 if (!cfg) continue;
 
-                const isAddress = await getCode(address, cfg.rpc_url, cfg.chain);
+                const isAddress = await getCodeCached(address, cfg.rpc_url, cfg.chain);
 
                 if (isAddress) {
                     // Get all transactions for the wallet address.
@@ -115,11 +235,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             continue;
                         }
 
-                        // Get native token price in USD
-                        const {usdPrice} = await getTokenPrice(cfg.contract, cfg.chain);
-
-                        // Get token balances for a specific wallet address.
-                        const balances = await getWalletTokenBalances(address, cfg.chain);
+                        // Parallel fetch: native token price and token balances
+                        const [{usdPrice}, balances] = await Promise.all([
+                            getTokenPrice(cfg.contract, cfg.chain),
+                            getWalletTokenBalances(address, cfg.chain)
+                        ]);
 
                         // Get lost swaps and transfers.
                         const {
@@ -150,7 +270,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         const cpsCountByContract = new Map();
                         const cpBalancesByToken = {};
 
-                        for (const [contract] of Object.entries(initialStats)) {
+                        // Process contracts in parallel batches
+                        const contracts = Object.entries(initialStats);
+
+                        await runInBatches(contracts, async ([contract]) => {
                             const contractLc = contract.toLowerCase();
 
                             const counterparties = [...new Set(
@@ -161,226 +284,173 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     .map(a => a.toLowerCase())
                             )];
 
+                            // Parallel check all counterparties
                             const checks = await Promise.all(
-                                counterparties.map(async cp => {
-                                    return await getCode(cp, cfg.rpc_url, cfg.chain);
-                                })
+                                counterparties.map(cp => getCodeCached(cp, cfg.rpc_url, cfg.chain))
                             );
 
                             const cpsCount = checks.filter(x => x).length;
                             cpsCountByContract.set(contractLc, cpsCount);
 
-                            if (cpsCount === 1) {
-                                const cp = counterparties[0];
-                                const isEOA = await getCode(cp, cfg.rpc_url, cfg.chain);
-                                if (!isEOA) continue;
+                            if (cpsCount !== 1) return;
 
-                                const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
-                                const cpBalances = await getWalletTokenBalances(cp, cfg.chain);
+                            const cp = counterparties[0];
+                            const cpData = await processCounterparty(cp, contractLc, address, cfg, usdPrice, transfers);
 
-                                // Знаходимо баланс потрібного токена
-                                const cpTokenBalance = cpBalances.find(
-                                    b => b.token_address?.toLowerCase() === contractLc
+                            if (!cpData || !cpData.processed) {
+                                if (cpData?.cpBalance) {
+                                    cpBalancesByToken[contractLc] = cpData.cpBalance;
+                                }
+                                return;
+                            }
+
+                            const {cpSwaps, cpTransfers, totalSentToParent, cpBalance, hasThirdPartyTransfers} = cpData;
+                            const addrLc = address.toLowerCase();
+                            const cpLc = cp.toLowerCase();
+
+                            if (cpBalance) {
+                                cpBalancesByToken[contractLc] = cpBalance;
+                            }
+
+                            if (hasThirdPartyTransfers) {
+                                thirdPartyCpTransfers.add(contractLc);
+                            }
+
+                            const cpBuySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
+
+                            if (cpBuySwaps.length === 1 && totalSentToParent > 0) {
+                                const onlySwap = {...cpBuySwaps[0]};
+                                const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
+                                const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
+                                const ratio = totalSentToParent / originalBought;
+                                const newEth = originalEth * ratio;
+
+                                onlySwap.sold.amount = newEth.toString();
+                                onlySwap.bought.amount = totalSentToParent.toString();
+
+                                allSwaps.push(onlySwap);
+                                allTransfers.push(...cpTransfers);
+                                const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                contractGroupMap[contractLc] = groupId;
+                                return;
+                            }
+
+                            if (cpBuySwaps.length > 1 && totalSentToParent > 0) {
+                                const firstSwap = {...cpBuySwaps[0]};
+                                const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
+
+                                if (totalSentToParent >= firstBought) {
+                                    const buySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
+                                    const sumBought = buySwaps.reduce((sum, s) =>
+                                        sum + Math.abs(parseFloat(s.bought.amount)), 0
+                                    );
+                                    const ratioAll = totalSentToParent / sumBought;
+
+                                    buySwaps.forEach(s => {
+                                        const clone = {...s};
+                                        const origSold = Math.abs(parseFloat(clone.sold.amount));
+                                        const origBought = Math.abs(parseFloat(clone.bought.amount));
+                                        clone.sold.amount = (origSold * ratioAll).toString();
+                                        clone.bought.amount = (origBought * ratioAll).toString();
+                                        allSwaps.push(clone);
+                                    });
+                                } else {
+                                    const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
+                                    const ratio = totalSentToParent / firstBought;
+                                    const newEth = originalEth * ratio;
+
+                                    firstSwap.sold.amount = newEth.toString();
+                                    firstSwap.bought.amount = totalSentToParent.toString();
+                                    allSwaps.push(firstSwap);
+                                }
+                                allTransfers.push(...cpTransfers);
+                                const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                contractGroupMap[contractLc] = groupId;
+                                return;
+                            }
+
+                            let outAmt = 0, inAmt = 0;
+                            allTransfers
+                                .filter(t => t.contract?.toLowerCase() === contractLc)
+                                .forEach(t => {
+                                    const v = Math.abs(parseFloat(t.value));
+                                    if (['send', 'token send'].includes(t.category)) outAmt += v;
+                                    if (['receive', 'token receive'].includes(t.category)) inAmt += v;
+                                });
+
+                            const spent = initialStats[contract].spent_token;
+                            const received = Math.abs(initialStats[contract].receive_token);
+
+                            const ratioOut = spent > 0 ? Math.min(1, outAmt / spent) : 0;
+                            const ratioIn = spent === 0 ? Math.min(1, inAmt / received) : 0;
+
+                            function matchSwapsByRatio(swaps, ratio, type) {
+                                const filtered = swaps.filter(s => s.transactionType === type);
+                                if (ratio === 1) return filtered;
+                                if (!filtered.length) return [];
+
+                                const total = filtered.reduce((sum, s) => {
+                                    const amt = Math.abs(parseFloat(
+                                        type === 'sell' ? s.sold.amount : s.bought.amount
+                                    ));
+                                    return sum + amt;
+                                }, 0);
+
+                                let target = total * ratio, acc = 0;
+                                const sorted = filtered.sort((a, b) =>
+                                    new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
                                 );
 
-                                console.log('cpTokenBalance', cpTokenBalance)
-
-                                if (cpTokenBalance) {
-                                    cpBalancesByToken[contractLc] = cpTokenBalance?.usd_value / usdPrice;
+                                const result = [];
+                                for (const sw of sorted) {
+                                    const amt = Math.abs(parseFloat(
+                                        type === 'sell' ? sw.sold.amount : sw.bought.amount
+                                    ));
+                                    if (amt >= target - acc) {
+                                        const clone = {...sw};
+                                        if (type === 'sell') clone.sold.amount = (target - acc).toString();
+                                        else clone.bought.amount = (target - acc).toString();
+                                        result.push(clone);
+                                        break;
+                                    }
+                                    result.push(sw);
+                                    acc += amt;
                                 }
 
-                                if (cPtransactions.length < process.env.SCAN_TRANSACTIONS_COUNT) {
-                                    const cpTransactions = await getTokenTransfers(cp, contractLc, cfg.chain_id);
-                                    let cpHistory = [];
-
-                                    if (cpTransactions.length > 10) {
-                                        cpHistory = await getWalletHistory(cp, cfg.chain);
-                                    } else {
-                                        for (const t of cpTransactions) {
-                                            const hist = await getWalletHistory(cp, cfg.chain, Number(t.blockNumber), Number(t.blockNumber));
-                                            if (hist.some(tx => tx.hash.toLowerCase() === t.hash.toLowerCase())) {
-                                                cpHistory.push(hist[0]);
-                                            }
-                                        }
-                                    }
-
-                                    if (cpHistory !== 'TRANSACTIONS_COUNT_LIMIT') {
-                                        const {swaps: allCpSwaps, transfers: allCpTransfers} =
-                                            await createHistorySwaps(cfg, cp, cpHistory, usdPrice);
-
-                                        const cpSwaps = allCpSwaps.filter(s =>
-                                            s.bought.address?.toLowerCase() === contractLc ||
-                                            s.sold.address?.toLowerCase() === contractLc
-                                        );
-
-                                        const rawCpTransfers = allCpTransfers.filter(t =>
-                                            t.contract?.toLowerCase() === contractLc
-                                        );
-
-                                        const addrLc = address.toLowerCase();
-                                        const cpLc = cp.toLowerCase();
-                                        const getFrom = (t) => (t.from ?? t.from_address ?? '').toLowerCase();
-                                        const getTo = (t) => (t.to ?? t.to_address ?? '').toLowerCase();
-
-                                        const cpTransfers = rawCpTransfers
-                                            .filter(t => getFrom(t) !== addrLc && getTo(t) !== addrLc)
-                                            .map(t => {
-                                                const clone = {...t};
-                                                if (getFrom(t) === cpLc) clone.from = address;
-                                                if (getTo(t) === cpLc) clone.to = address;
-                                                return clone;
-                                            });
-
-                                        if (cpTransfers.length > 0) {
-                                            thirdPartyCpTransfers.add(contractLc);
-                                        }
-
-                                        const totalSentToParent = allCpTransfers
-                                            .filter(t =>
-                                                t.contract?.toLowerCase() === contractLc &&
-                                                getFrom(t) === cpLc &&
-                                                getTo(t) === addrLc
-                                            )
-                                            .reduce((sum, t) => sum + Math.abs(parseFloat(t.value)), 0);
-
-                                        const cpBuySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
-
-                                        if (cpBuySwaps.length === 1 && totalSentToParent > 0) {
-                                            const onlySwap = {...cpBuySwaps[0]};
-                                            const originalEth = Math.abs(parseFloat(onlySwap.sold.amount));
-                                            const originalBought = Math.abs(parseFloat(onlySwap.bought.amount));
-                                            const ratio = totalSentToParent / originalBought;
-                                            const newEth = originalEth * ratio;
-
-                                            onlySwap.sold.amount = newEth.toString();
-                                            onlySwap.bought.amount = totalSentToParent.toString();
-
-                                            allSwaps.push(onlySwap);
-                                            allTransfers.push(...cpTransfers);
-                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
-                                            contractGroupMap[contractLc] = groupId;
-                                            continue;
-                                        }
-
-                                        if (cpBuySwaps.length > 1 && totalSentToParent > 0) {
-                                            const firstSwap = {...cpBuySwaps[0]};
-                                            const firstBought = Math.abs(parseFloat(firstSwap.bought.amount));
-
-                                            if (totalSentToParent >= firstBought) {
-                                                const buySwaps = cpSwaps.filter(s => s.transactionType === 'buy');
-                                                const sumBought = buySwaps.reduce((sum, s) =>
-                                                    sum + Math.abs(parseFloat(s.bought.amount)), 0
-                                                );
-                                                const ratioAll = totalSentToParent / sumBought;
-
-                                                buySwaps.forEach(s => {
-                                                    const clone = {...s};
-                                                    const origSold = Math.abs(parseFloat(clone.sold.amount));
-                                                    const origBought = Math.abs(parseFloat(clone.bought.amount));
-                                                    clone.sold.amount = (origSold * ratioAll).toString();
-                                                    clone.bought.amount = (origBought * ratioAll).toString();
-                                                    allSwaps.push(clone);
-                                                });
-                                            } else {
-                                                const originalEth = Math.abs(parseFloat(firstSwap.sold.amount));
-                                                const ratio = totalSentToParent / firstBought;
-                                                const newEth = originalEth * ratio;
-
-                                                firstSwap.sold.amount = newEth.toString();
-                                                firstSwap.bought.amount = totalSentToParent.toString();
-                                                allSwaps.push(firstSwap);
-                                            }
-                                            allTransfers.push(...cpTransfers);
-                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
-                                            contractGroupMap[contractLc] = groupId;
-                                            continue;
-                                        }
-
-                                        let outAmt = 0, inAmt = 0;
-                                        allTransfers
-                                            .filter(t => t.contract?.toLowerCase() === contractLc)
-                                            .forEach(t => {
-                                                const v = Math.abs(parseFloat(t.value));
-                                                if (['send', 'token send'].includes(t.category)) outAmt += v;
-                                                if (['receive', 'token receive'].includes(t.category)) inAmt += v;
-                                            });
-
-                                        const spent = initialStats[contract].spent_token;
-                                        const received = Math.abs(initialStats[contract].receive_token);
-
-                                        const ratioOut = spent > 0 ? Math.min(1, outAmt / spent) : 0;
-                                        const ratioIn = spent === 0 ? Math.min(1, inAmt / received) : 0;
-
-                                        function matchSwapsByRatio(swaps, ratio, type) {
-                                            const filtered = swaps.filter(s => s.transactionType === type);
-                                            if (ratio === 1) return filtered;
-                                            if (!filtered.length) return [];
-
-                                            const total = filtered.reduce((sum, s) => {
-                                                const amt = Math.abs(parseFloat(
-                                                    type === 'sell' ? s.sold.amount : s.bought.amount
-                                                ));
-                                                return sum + amt;
-                                            }, 0);
-
-                                            let target = total * ratio, acc = 0;
-                                            const sorted = filtered.sort((a, b) =>
-                                                new Date(a.blockTimestamp) - new Date(b.blockTimestamp)
-                                            );
-
-                                            const result = [];
-                                            for (const sw of sorted) {
-                                                const amt = Math.abs(parseFloat(
-                                                    type === 'sell' ? sw.sold.amount : sw.bought.amount
-                                                ));
-                                                if (amt >= target - acc) {
-                                                    const clone = {...sw};
-                                                    if (type === 'sell') clone.sold.amount = (target - acc).toString();
-                                                    else clone.bought.amount = (target - acc).toString();
-                                                    result.push(clone);
-                                                    break;
-                                                }
-                                                result.push(sw);
-                                                acc += amt;
-                                            }
-
-                                            if (!result.length) {
-                                                const avg = (total * ratio) / filtered.length;
-                                                const tpl = {...filtered[0]};
-                                                if (type === 'sell') tpl.sold.amount = avg.toString();
-                                                else tpl.bought.amount = avg.toString();
-                                                return [tpl];
-                                            }
-                                            return result;
-                                        }
-
-                                        if (ratioOut > 0) {
-                                            if (totalSentToParent > 0) {
-                                                const matched = matchSwapsByRatio(cpSwaps, ratioOut, 'sell');
-                                                allSwaps.push(...matched);
-                                                allTransfers.push(...cpTransfers);
-                                            } else {
-                                                allSwaps.push(...cpSwaps);
-                                                allTransfers.push(...cpTransfers);
-                                            }
-                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
-                                            contractGroupMap[contractLc] = groupId;
-                                        } else if (ratioIn > 0) {
-                                            if (totalSentToParent > 0) {
-                                                const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
-                                                allSwaps.push(...matched);
-                                                allTransfers.push(...cpTransfers);
-                                            } else {
-                                                allSwaps.push(...cpSwaps);
-                                                allTransfers.push(...cpTransfers);
-                                            }
-                                            const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
-                                            contractGroupMap[contractLc] = groupId;
-                                        }
-                                    }
+                                if (!result.length) {
+                                    const avg = (total * ratio) / filtered.length;
+                                    const tpl = {...filtered[0]};
+                                    if (type === 'sell') tpl.sold.amount = avg.toString();
+                                    else tpl.bought.amount = avg.toString();
+                                    return [tpl];
                                 }
+                                return result;
                             }
-                        }
+
+                            if (ratioOut > 0) {
+                                if (totalSentToParent > 0) {
+                                    const matched = matchSwapsByRatio(cpSwaps, ratioOut, 'sell');
+                                    allSwaps.push(...matched);
+                                    allTransfers.push(...cpTransfers);
+                                } else {
+                                    allSwaps.push(...cpSwaps);
+                                    allTransfers.push(...cpTransfers);
+                                }
+                                const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                contractGroupMap[contractLc] = groupId;
+                            } else if (ratioIn > 0) {
+                                if (totalSentToParent > 0) {
+                                    const matched = matchSwapsByRatio(cpSwaps, ratioIn, 'buy');
+                                    allSwaps.push(...matched);
+                                    allTransfers.push(...cpTransfers);
+                                } else {
+                                    allSwaps.push(...cpSwaps);
+                                    allTransfers.push(...cpTransfers);
+                                }
+                                const groupId = `${cfg.chain}|${contractLc}|${[addrLc, cpLc].sort().join('|')}`;
+                                contractGroupMap[contractLc] = groupId;
+                            }
+                        }, PARALLEL_CONTRACT_BATCH);
 
                         // dedupe swaps and transfers
                         const dedupeSwaps = (swapsArr) => {
@@ -524,6 +594,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             return `${intPart}${fracPart ? '.' + fracPart : ''}`;
                         }
 
+                        // Parallel: Process balances - collect tokens that need price fetching
+                        const tokensNeedingPrice = [];
                         for (const token of balances) {
                             const addr = token.token_address;
                             if (!tokenData[addr]) continue;
@@ -531,13 +603,29 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const amountStr = formatUnitsManual(token.balance, token.decimals);
                             const amount = parseFloat(amountStr);
 
-                            let usdValue = token.usd_value;
-                            if (!usdValue || usdValue === 0) {
-                                const data = await getDexscreenerTokenPrice(addr, cfg.dexscreener_chain_id);
-                                usdValue = amount * Number(data?.priceUsd || 0);
+                            if (!token.usd_value || token.usd_value === 0) {
+                                tokensNeedingPrice.push({addr, amount, token});
+                            } else {
+                                tokenData[addr].balance = token.usd_value / usdPrice;
                             }
+                        }
 
-                            tokenData[addr].balance = usdValue / usdPrice;
+                        // Fetch all missing prices in parallel
+                        if (tokensNeedingPrice.length > 0) {
+                            const priceResults = await runInBatches(
+                                tokensNeedingPrice,
+                                async ({addr, amount}) => {
+                                    const data = await getDexscreenerTokenPrice(addr, cfg.dexscreener_chain_id);
+                                    return {addr, usdValue: amount * Number(data?.priceUsd || 0)};
+                                },
+                                PARALLEL_BATCH_SIZE
+                            );
+
+                            for (const {addr, usdValue} of priceResults) {
+                                if (tokenData[addr]) {
+                                    tokenData[addr].balance = usdValue / usdPrice;
+                                }
+                            }
                         }
 
                         for (const [contractAddr, cpBalance] of Object.entries(cpBalancesByToken)) {
@@ -608,12 +696,47 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         let sumIncludedPnls = 0;
                         let includedTokenCount = 0;
 
-                        for (const [contract, stats] of Object.entries(tokenData)) {
+                        // Parallel: Fetch all dexscreener prices and collect addresses to check
+                        const tokenEntries = Object.entries(tokenData);
+                        const contractAddresses = tokenEntries.map(([contract]) => contract);
+
+                        // Prefetch all dexscreener prices in parallel
+                        const dexPricePromises = contractAddresses.map(contract =>
+                            getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id)
+                        );
+                        const dexPrices = await Promise.all(dexPricePromises);
+                        const dexPriceMap = new Map(contractAddresses.map((c, i) => [c, dexPrices[i]]));
+
+                        // Collect all unique addresses from transfers that need getCode check
+                        const allAddressesToCheck = new Set();
+                        for (const [contract, stats] of tokenEntries) {
+                            const allTokenContracts = [contract.toLowerCase()];
+                            if (stats.same_contracts) {
+                                allTokenContracts.push(...Object.keys(stats.same_contracts).map(c => c));
+                            }
+                            const tokenTransfers = allTransfers.filter(i => allTokenContracts.includes(i.contract));
+
+                            for (const transfer of tokenTransfers) {
+                                if (transfer.from) allAddressesToCheck.add(transfer.from.toLowerCase());
+                                if (transfer.to) allAddressesToCheck.add(transfer.to.toLowerCase());
+                            }
+                        }
+
+                        // Prefetch all getCode results in parallel batches
+                        const addressesToCheckArray = [...allAddressesToCheck];
+                        await runInBatches(
+                            addressesToCheckArray,
+                            addr => getCodeCached(addr, cfg.rpc_url, cfg.chain),
+                            PARALLEL_BATCH_SIZE
+                        );
+
+                        // Now process tokens with cached data
+                        for (const [contract, stats] of tokenEntries) {
                             let inflowCount = 0;
                             let outflowCount = 0;
                             let diffMinutes = null;
 
-                            const pairStat = await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
+                            const pairStat = dexPriceMap.get(contract);
 
                             if (Array.isArray(stats.trades) && stats.trades.length > 0) {
                                 const sortedTrades = stats.trades.slice().sort(
@@ -657,13 +780,13 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             let hasContractTransfer = false;
 
+                            // Use cached getCode results
                             for (const transfer of tokenTransfers) {
-
                                 const v = Math.abs(parseFloat(transfer.value));
                                 if (['send', 'token send'].includes(transfer.category)) {
                                     outflowCount++;
 
-                                    const isAddress = await getCode(transfer.from, cfg.rpc_url, cfg.chain);
+                                    const isAddress = await getCodeCached(transfer.from, cfg.rpc_url, cfg.chain);
                                     if (!isAddress) {
                                         tokenOutTransferToContract += v;
                                     }
@@ -671,7 +794,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 if (['receive', 'token receive'].includes(transfer.category)) {
                                     inflowCount++;
 
-                                    const isAddress = await getCode(transfer.from, cfg.rpc_url, cfg.chain);
+                                    const isAddress = await getCodeCached(transfer.from, cfg.rpc_url, cfg.chain);
                                     if (!isAddress) {
                                         tokenInTransferToContract += v;
                                     }
@@ -688,7 +811,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             )];
 
                             for (const toAddr of outRecipients) {
-                                const eoa = await getCode(toAddr, cfg.rpc_url, cfg.chain);
+                                const eoa = await getCodeCached(toAddr, cfg.rpc_url, cfg.chain);
                                 if (!eoa) {
                                     hasContractTransfer = true;
                                     break;
@@ -875,6 +998,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         clearMoralisCache();
                         clearScanCache();
                         clearDexCache();
+                        clearCodeCache();
                     } else {
                         await bot.sendMessage(chatId,
                             `Transactions count address more then ${process.env.SCAN_TRANSACTIONS_COUNT} \n\`${address}\``,

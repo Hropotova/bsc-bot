@@ -103,12 +103,10 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 const getAllTransactions = async (address, chain_id, maxTx = +process.env.SCAN_TRANSACTIONS_COUNT) => {
     const key = `${address}:${chain_id}:${maxTx}`;
     if (txCache.has(key)) {
-        console.debug(`Cache hit: for getAllTransactions(${key})`);
         return txCache.get(key);
     }
 
     try {
-        console.debug(`Scan: Fetching up to ${maxTx} txs for ${address} on chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'txlist',
@@ -129,7 +127,6 @@ const getAllTransactions = async (address, chain_id, maxTx = +process.env.SCAN_T
         const all = response.data.result || [];
         const sliced = all.length > maxTx ? all.slice(0, maxTx) : all;
 
-        console.debug(`Scan: Retrieved ${sliced.length} txs (requested max ${maxTx})`);
         txCache.set(key, sliced);
         return sliced;
     } catch (error) {
@@ -148,12 +145,10 @@ const getTokenTransfers = async (
 ) => {
     const key = `${address}:${contractAddress}:${chain_id}`;
     if (tokenTxCache.has(key)) {
-        console.debug(`Cache hit: for getTokenTransfers(${key})`);
         return tokenTxCache.get(key);
     }
 
     try {
-        console.debug(`Scan: Fetching token transfers for ${address} token ${contractAddress} on chain ${chain_id}`);
         const params = {
             module: 'account',
             action: 'tokentx',
@@ -171,7 +166,6 @@ const getTokenTransfers = async (
         );
 
         const result = response.data.result || [];
-        console.debug(`Scan: Fetched ${result.length} token transfers`);
         tokenTxCache.set(key, result);
         return result;
     } catch (error) {
