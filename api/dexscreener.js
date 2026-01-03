@@ -105,17 +105,14 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
 const getDexscreenerTokenPrice = async (tokenAddress, chainId) => {
     const key = `${chainId}:${tokenAddress}`;
     if (dexSingleCache.has(key)) {
-        console.debug(`Cache hit: for getDexscreenerTokenPrice(${key})`);
         return dexSingleCache.get(key);
     }
 
     const url = `latest/dex/tokens/${tokenAddress}`;
     try {
-        console.debug(`Dexscreener: Fetching price data for ${tokenAddress} on chain ${chainId}`);
         const response = await defaultLimiter.schedule(() =>
             fetchWithRetry(() => api.get(url))
         );
-        console.debug(`Dexscreener: Fetched price data for ${tokenAddress}`);
         dexSingleCache.set(key, response.data);
 
         if (response?.data?.pairs.length> 0) {

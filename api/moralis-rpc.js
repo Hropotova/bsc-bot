@@ -100,14 +100,12 @@ const prefetchAddresses = async (addresses, rpcUrl, chain) => {
 
     if (uncached.length === 0) return;
 
-    console.log(`Prefetching ${uncached.length} addresses...`);
 
     for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
         const batch = uncached.slice(i, i + BATCH_SIZE);
         await batchGetCode(batch, rpcUrl, chain);
     }
 
-    console.log(`Prefetch complete: ${uncached.length} addresses cached`);
 };
 
 const clearCodeCache = () => codeCache.clear();
