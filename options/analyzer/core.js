@@ -9,7 +9,7 @@ const {
     getWalletHistory,
     clearMoralisCache,
 } = require('../../api/moralis');
-const {getCode} = require('../../api/moralis-rpc');
+const {getCode, prefetchAddresses, clearCodeCache} = require('../../api/moralis-rpc');
 const {
     getAllTransactions,
     getTokenTransfers,
@@ -29,46 +29,9 @@ const {
 } = require('../../controlers');
 
 const config = require('../../config.js');
-
-function stringifyWithInline(obj, inlineKeys = ['pnl'], space = 2) {
-    const START = '__INLINE__';
-    const END = '__END__';
-
-    const json = JSON.stringify(
-        obj,
-        (key, value) => {
-            if (inlineKeys.includes(key) && value && typeof value === 'object' && !Array.isArray(value)) {
-                const pairs = Object.entries(value)
-                    .map(([k, v]) => `"${k}": ${JSON.stringify(v)}`)
-                    .join(', ');
-                return `${START}{ ${pairs} }${END}`;
-            }
-            return value;
-        },
-        space
-    );
-
-    return json.replace(new RegExp(`"${START}([\\s\\S]*?)${END}"`, 'g'), (_, inner) => {
-        return JSON.parse(`"${inner}"`);
-    });
-}
-
-function getOldestBuyTimestamp(trades) {
-    let oldestTs = null;
-
-    for (const t of trades || []) {
-        if (t && t.transactionType === 'buy' && t.blockTimestamp) {
-            const ts = Date.parse(t.blockTimestamp);
-            if (!Number.isNaN(ts)) {
-                if (oldestTs === null || ts < oldestTs) {
-                    oldestTs = ts;
-                }
-            }
-        }
-    }
-
-    return oldestTs !== null ? new Date(oldestTs).toISOString() : null;
-}
+const {stringifyWithInline} = require("./services/stringifyWithInline");
+const {getOldestBuyTimestamp} = require("./services/getOldestBuyTimestamp");
+const {formatUnitsManual} = require("./services/formatUnitsManual");
 
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
@@ -126,6 +89,15 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             swaps,
                             transfers
                         } = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
+
+                        const addressesToPrefetch = new Set();
+                        for (const t of transfers) {
+                            if (t.from) addressesToPrefetch.add(t.from);
+                            if (t.to) addressesToPrefetch.add(t.to);
+                            if (t.from_address) addressesToPrefetch.add(t.from_address);
+                            if (t.to_address) addressesToPrefetch.add(t.to_address);
+                        }
+                        await prefetchAddresses([...addressesToPrefetch], cfg.rpc_url, cfg.chain);
 
                         let allSwaps = [...swaps];
                         let allTransfers = [...transfers];
@@ -509,21 +481,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         }
 
                         // Convert USD balances to Native Token equivalents.
-                        function formatUnitsManual(value, decimals = 18) {
-                            let s = value.toString();
-
-                            if (s.length <= decimals) {
-                                s = s.padStart(decimals + 1, '0');
-                            }
-
-                            const intPart = s.slice(0, s.length - decimals);
-                            let fracPart = s.slice(s.length - decimals);
-
-                            fracPart = fracPart.replace(/0+$/, '');
-
-                            return `${intPart}${fracPart ? '.' + fracPart : ''}`;
-                        }
-
                         for (const token of balances) {
                             const addr = token.token_address;
                             if (!tokenData[addr]) continue;
@@ -875,6 +832,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         clearMoralisCache();
                         clearScanCache();
                         clearDexCache();
+                        clearCodeCache();
                     } else {
                         await bot.sendMessage(chatId,
                             `Transactions count address more then ${process.env.SCAN_TRANSACTIONS_COUNT} \n\`${address}\``,
