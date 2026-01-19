@@ -10,6 +10,7 @@ const COST = {
     history: 30,
     balances: 20,
     tokenPrice: 20,
+    tokenPricesBatch: 50,
     activeChainsBase: 50,
     activeChainsPerChain: 50,
 };
@@ -129,9 +130,6 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
     throw new Error('Exceeded max retries');
 };
 
-/**
- * Helper для retry всієї функції з пагінацією
- */
 const withFullRetry = async (fn, fnName, maxRetries = 2) => {
     let lastError = null;
 
@@ -143,7 +141,7 @@ const withFullRetry = async (fn, fnName, maxRetries = 2) => {
             const errMsg = err.response?.data?.message || err.message;
 
             if (attempt < maxRetries) {
-                const wait = 2000 * (attempt + 1); // 2s, 4s
+                const wait = 2000 * (attempt + 1);
                 logger.logWarning(`${fnName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${errMsg}. Retrying in ${wait}ms...`);
                 await new Promise(r => setTimeout(r, wait));
             } else {
@@ -154,6 +152,111 @@ const withFullRetry = async (fn, fnName, maxRetries = 2) => {
 
     throw lastError;
 };
+
+// ============================================================
+// BATCH TOKEN PRICES - до 100 токенів за запит!
+// ============================================================
+
+/**
+ * Отримує ціни для багатьох токенів одним batch запитом
+ * @param {string[]} tokenAddresses - масив адрес токенів
+ * @param {string} chain - мережа (eth, base, bsc, etc.)
+ * @returns {Map<string, object>} - Map з адресою як ключем
+ */
+const getTokenPricesBatch = async (tokenAddresses, chain) => {
+    if (!tokenAddresses || tokenAddresses.length === 0) {
+        return new Map();
+    }
+
+    const uncached = [];
+    const results = new Map();
+
+    for (const addr of tokenAddresses) {
+        const key = `${addr.toLowerCase()}:${chain}:`;
+        if (priceCache.has(key)) {
+            results.set(addr.toLowerCase(), priceCache.get(key));
+        } else {
+            uncached.push(addr);
+        }
+    }
+
+    if (uncached.length === 0) {
+        logger.logInfo(`Moralis batch prices: all ${tokenAddresses.length} tokens from cache`);
+        return results;
+    }
+
+    const BATCH_SIZE = 100;
+    const chunks = [];
+    for (let i = 0; i < uncached.length; i += BATCH_SIZE) {
+        chunks.push(uncached.slice(i, i + BATCH_SIZE));
+    }
+
+    const timer = logger.startOperation('Moralis', 'batchGetPrices',
+        `${uncached.length} tokens in ${chunks.length} batch(es)`);
+
+    for (const chunk of chunks) {
+        try {
+            const body = {
+                tokens: chunk.map(addr => ({ token_address: addr }))
+            };
+
+            const resp = await rateLimiter.schedule(COST.tokenPricesBatch, () =>
+                fetchWithRetry(() => api.post(`erc20/prices?chain=${chain}`, body))
+            );
+
+            const prices = resp.data || [];
+
+            for (const priceData of prices) {
+                const addr = priceData.tokenAddress?.toLowerCase();
+                if (addr) {
+                    const cacheKey = `${addr}:${chain}:`;
+                    priceCache.set(cacheKey, priceData);
+                    results.set(addr, priceData);
+                }
+            }
+
+            for (const addr of chunk) {
+                const addrLower = addr.toLowerCase();
+                if (!results.has(addrLower)) {
+                    const cacheKey = `${addrLower}:${chain}:`;
+                    priceCache.set(cacheKey, null);
+                    results.set(addrLower, null);
+                }
+            }
+
+            logger.logInfo(`  └─ Batch chunk: ${chunk.length} tokens, ${prices.length} prices found`);
+
+        } catch (error) {
+            logger.logError(`Moralis batch prices failed: ${error.response?.data?.message || error.message}`);
+            for (const addr of chunk) {
+                const cacheKey = `${addr.toLowerCase()}:${chain}:`;
+                priceCache.set(cacheKey, null);
+                results.set(addr.toLowerCase(), null);
+            }
+        }
+    }
+
+    logger.endOperation(timer);
+    logger.logInfo(`Moralis batch prices complete: ${results.size} tokens processed`);
+
+    return results;
+};
+
+/**
+ * Prefetch цін токенів для подальшого використання
+ */
+const prefetchTokenPrices = async (tokenAddresses, chain) => {
+    if (!tokenAddresses || tokenAddresses.length === 0) return;
+
+    const unique = [...new Set(tokenAddresses.map(a => a.toLowerCase()))];
+    logger.logInfo(`Moralis price prefetch: ${unique.length} unique tokens`);
+
+    await getTokenPricesBatch(unique, chain);
+};
+
+// ============================================================
+// EXISTING FUNCTIONS
+// ============================================================
 
 const getWalletTokenSwaps = async (address, chain) => {
     const key = `${address}:${chain}`;
@@ -313,8 +416,11 @@ const getActiveWalletChains = async (address) => {
     }
 };
 
+/**
+ * Single token price - спочатку перевіряє кеш (може бути від batch prefetch)
+ */
 const getTokenPrice = async (token, chain, block) => {
-    const key = `${token}:${chain}:${block || ''}`;
+    const key = `${token.toLowerCase()}:${chain}:${block || ''}`;
     if (priceCache.has(key)) {
         return priceCache.get(key);
     }
@@ -333,6 +439,7 @@ const getTokenPrice = async (token, chain, block) => {
     } catch (err) {
         logger.endOperation(timer);
         logger.logError(`Moralis price failed for ${token}: ${err.response?.data?.message || err.message}`);
+        priceCache.set(key, null);
         return null;
     }
 };
@@ -343,5 +450,7 @@ module.exports = {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
+    getTokenPricesBatch,
+    prefetchTokenPrices,
     clearMoralisCache,
 };

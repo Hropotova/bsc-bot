@@ -7,6 +7,8 @@ const {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
+    getTokenPricesBatch,      // <-- ДОДАНО
+    prefetchTokenPrices,       // <-- ДОДАНО
     getWalletHistory,
     clearMoralisCache,
 } = require('../../api/moralis');
@@ -18,6 +20,8 @@ const {
 } = require('../../api/scan');
 const {
     getDexscreenerTokenPrice,
+    getDexscreenerTokenPricesBatch,
+    prefetchDexscreenerPrices,
     clearDexCache,
 } = require('../../api/dexscreener');
 
@@ -34,6 +38,11 @@ const {stringifyWithInline} = require("./services/stringifyWithInline");
 const {getOldestBuyTimestamp} = require("./services/getOldestBuyTimestamp");
 const {formatUnitsManual} = require("./services/formatUnitsManual");
 
+// Blacklist проблемних адрес що викликають timeout/помилки
+const BLACKLISTED_ADDRESSES = new Set([
+    '0x000000000000000000000000000000000000dead',
+    '0x0000000000000000000000000000000000000000',
+]);
 
 const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
@@ -104,7 +113,60 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         logger.logStage('STAGE 2.5: Getting token balances');
                         const balances = await getWalletTokenBalances(address, cfg.chain);
 
+                        // ========== STAGE 2.5.5: PREFETCH Moralis token prices ==========
+                        // Це головна оптимізація! Збираємо всі токени з history і prefetch їх ціни
+                        logger.logStage('STAGE 2.5.5: Prefetching Moralis token prices for swap processing');
+                        const prefetchPriceTimer = logger.createTimer('moralisPricePrefetch');
+
+                        const tokenAddressesForPricePrefetch = new Set();
+
+                        // Збираємо токени з transactionsHistory
+                        for (const tx of transactionsHistory) {
+                            // З erc20_transfers
+                            if (tx.erc20_transfers) {
+                                for (const et of tx.erc20_transfers) {
+                                    if (et.address) {
+                                        tokenAddressesForPricePrefetch.add(et.address.toLowerCase());
+                                    }
+                                }
+                            }
+
+                            // З native_transfers
+                            if (tx.native_transfers) {
+                                for (const nt of tx.native_transfers) {
+                                    if (nt.token_address) {
+                                        tokenAddressesForPricePrefetch.add(nt.token_address.toLowerCase());
+                                    }
+                                }
+                            }
+
+                            // З summary (витягуємо адреси токенів)
+                            if (tx.summary) {
+                                const matches = tx.summary.match(/0x[a-fA-F0-9]{40}/g);
+                                if (matches) {
+                                    matches.forEach(addr => tokenAddressesForPricePrefetch.add(addr.toLowerCase()));
+                                }
+                            }
+                        }
+
+                        // Видаляємо native token, stablecoins та excluded
+                        tokenAddressesForPricePrefetch.delete(cfg.contract.toLowerCase());
+                        for (const stable of cfg.stable_coins) {
+                            tokenAddressesForPricePrefetch.delete(stable.toLowerCase());
+                        }
+                        for (const excluded of cfg.excluded_contracts) {
+                            tokenAddressesForPricePrefetch.delete(excluded.toLowerCase());
+                        }
+
+                        // Batch prefetch всіх цін ПЕРЕД createHistorySwaps
+                        if (tokenAddressesForPricePrefetch.size > 0) {
+                            await prefetchTokenPrices([...tokenAddressesForPricePrefetch], cfg.chain);
+                            logger.logInfo(`Prefetched Moralis prices for ${tokenAddressesForPricePrefetch.size} tokens`);
+                        }
+                        prefetchPriceTimer.stop();
+
                         // ========== STAGE 2.6: Create history swaps ==========
+                        // Тепер getTokenPrice всередині createHistorySwaps буде використовувати cache hits!
                         logger.logStage('STAGE 2.6: Creating history swaps', `${transactionsHistory.length} transactions`);
                         const swapTimer = logger.createTimer('createHistorySwaps');
                         const {
@@ -123,6 +185,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             if (t.from_address) addressesToPrefetch.add(t.from_address);
                             if (t.to_address) addressesToPrefetch.add(t.to_address);
                         }
+
+                        // Видаляємо blacklisted адреси
+                        for (const blacklisted of BLACKLISTED_ADDRESSES) {
+                            addressesToPrefetch.delete(blacklisted);
+                        }
+
                         await prefetchAddresses([...addressesToPrefetch], cfg.rpc_url, cfg.chain);
 
                         let allSwaps = [...swaps];
@@ -167,6 +235,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                     .map(t => (['send', 'token send'].includes(t.category) ? t.to : t.from))
                                     .filter(Boolean)
                                     .map(a => a.toLowerCase())
+                                    .filter(a => !BLACKLISTED_ADDRESSES.has(a)) // Фільтруємо blacklisted
                             )];
 
                             const checks = await Promise.all(
@@ -180,6 +249,13 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             if (cpsCount === 1) {
                                 const cp = counterparties[0];
+
+                                // Skip blacklisted addresses
+                                if (BLACKLISTED_ADDRESSES.has(cp.toLowerCase())) {
+                                    logger.logInfo(`Skipping blacklisted counterparty: ${cp}`);
+                                    continue;
+                                }
+
                                 const isEOA = await getCode(cp, cfg.rpc_url, cfg.chain);
                                 if (!isEOA) continue;
 
@@ -525,12 +601,44 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         tokenDataTimer.stop();
                         logger.logInfo(`Built data for ${Object.keys(tokenData).length} tokens`);
 
+                        // ========== STAGE 2.10.5: BATCH PREFETCH Dexscreener prices ==========
+                        logger.logStage('STAGE 2.10.5: Batch prefetching Dexscreener prices');
+                        const prefetchTimer = logger.createTimer('dexscreenerPrefetch');
+
+                        // Збираємо всі адреси токенів для batch prefetch
+                        const allTokenAddressesForDex = new Set();
+
+                        // Токени з balances які потребують ціни
+                        for (const token of balances) {
+                            if (token.token_address && tokenData[token.token_address]) {
+                                if (!token.usd_value || token.usd_value === 0) {
+                                    allTokenAddressesForDex.add(token.token_address.toLowerCase());
+                                }
+                            }
+                        }
+
+                        // Всі токени з tokenData
+                        for (const contract of Object.keys(tokenData)) {
+                            allTokenAddressesForDex.add(contract.toLowerCase());
+                        }
+
+                        // Один batch запит замість багатьох окремих!
+                        let dexPricesMap = new Map();
+                        if (allTokenAddressesForDex.size > 0) {
+                            dexPricesMap = await getDexscreenerTokenPricesBatch(
+                                [...allTokenAddressesForDex],
+                                cfg.dexscreener_chain_id
+                            );
+                            logger.logInfo(`Batch prefetched ${allTokenAddressesForDex.size} token prices`);
+                        }
+                        prefetchTimer.stop();
+
                         // ========== STAGE 2.11: Convert balances to native token ==========
                         logger.logStage('STAGE 2.11: Converting balances to native token equivalents');
                         const balanceTimer = logger.createTimer('convertBalances');
 
                         for (const token of balances) {
-                            const addr = token.token_address;
+                            const addr = token.token_address?.toLowerCase();
                             if (!tokenData[addr]) continue;
 
                             const amountStr = formatUnitsManual(token.balance, token.decimals);
@@ -538,7 +646,8 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             let usdValue = token.usd_value;
                             if (!usdValue || usdValue === 0) {
-                                const data = await getDexscreenerTokenPrice(addr, cfg.dexscreener_chain_id);
+                                // Тепер це миттєво - дані вже в кеші!
+                                const data = dexPricesMap.get(addr) || await getDexscreenerTokenPrice(addr, cfg.dexscreener_chain_id);
                                 usdValue = amount * Number(data?.priceUsd || 0);
                             }
 
@@ -626,7 +735,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             let outflowCount = 0;
                             let diffMinutes = null;
 
-                            const pairStat = await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
+                            // Тепер це миттєво - дані вже в кеші від batch prefetch!
+                            const pairStat = dexPricesMap.get(contract.toLowerCase()) ||
+                                await getDexscreenerTokenPrice(contract, cfg.dexscreener_chain_id);
 
                             if (Array.isArray(stats.trades) && stats.trades.length > 0) {
                                 const sortedTrades = stats.trades.slice().sort(
