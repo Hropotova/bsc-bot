@@ -1,6 +1,28 @@
 const {getTokenTransfers} = require('../../../../api/scan');
 const {getWalletTokenSwaps} = require('../../../../api/moralis');
 
+// Concurrency limiter для паралельних запитів
+const pLimit = (concurrency) => {
+    let active = 0;
+    const queue = [];
+
+    const next = () => {
+        if (active < concurrency && queue.length > 0) {
+            active++;
+            const { fn, resolve, reject } = queue.shift();
+            fn().then(resolve).catch(reject).finally(() => {
+                active--;
+                next();
+            });
+        }
+    };
+
+    return (fn) => new Promise((resolve, reject) => {
+        queue.push({ fn, resolve, reject });
+        next();
+    });
+};
+
 const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersArray, nativeTokenPrice) => {
     const rawSwaps = await getWalletTokenSwaps(address, config.chain);
 
@@ -57,14 +79,12 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
         tx => !swapHashes.has(tx.transactionHash.toLowerCase())
     );
 
-    const validatedSwaps = [];
-
-    for (const swap of swaps) {
+    // Фільтруємо свопи, які потребують валідації
+    const swapsToValidate = swaps.filter(swap => {
         const hash = swap.transactionHash.toLowerCase();
-        if (existingSwapHashes.has(hash)) continue;
+        if (existingSwapHashes.has(hash)) return false;
 
         const {bought, sold} = swap;
-
         const boughtAddress = bought.address.toLowerCase();
         const soldAddress = sold.address.toLowerCase();
 
@@ -78,44 +98,59 @@ const checkLostSwapsInTransfers = async (config, address, swapsArray, transfersA
             config.stable_coins.includes(soldAddress) ||
             config.excluded_contracts.includes(soldAddress);
 
-        if (isBoughtSafe && isSoldSafe) continue;
+        // Пропускаємо якщо обидва safe
+        if (isBoughtSafe && isSoldSafe) return false;
 
-        let shouldAdd = false;
+        // Зберігаємо інформацію для валідації
+        swap._validation = { isBoughtSafe, isSoldSafe, boughtAddress, soldAddress };
+        return true;
+    });
 
-        if (!isBoughtSafe) {
+    // Паралельна валідація з обмеженням concurrency (5 паралельних запитів)
+    const limit = pLimit(5);
+
+    const validationResults = await Promise.all(
+        swapsToValidate.map(swap => limit(async () => {
+            const { isBoughtSafe, isSoldSafe, boughtAddress, soldAddress } = swap._validation;
             const block = Number(swap.blockNumber);
-            const boughtTransfers = await getTokenTransfers(
-                address,
-                boughtAddress,
-                config.chain_id,
-                block,
-                block
-            );
-            if (Array.isArray(boughtTransfers) && boughtTransfers.length > 0) {
-                shouldAdd = true;
+
+            // Перевіряємо bought якщо не safe
+            if (!isBoughtSafe) {
+                const boughtTransfers = await getTokenTransfers(
+                    address,
+                    boughtAddress,
+                    config.chain_id,
+                    block,
+                    block
+                );
+                if (Array.isArray(boughtTransfers) && boughtTransfers.length > 0) {
+                    delete swap._validation;
+                    return swap;
+                }
             }
-        }
 
-        if (!shouldAdd && !isSoldSafe) {
-            const block = Number(swap.blockNumber);
-            const soldTransfers = await getTokenTransfers(
-                address,
-                soldAddress,
-                config.chain_id,
-                block,
-                block
-            );
-            if (Array.isArray(soldTransfers) && soldTransfers.length > 0) {
-                shouldAdd = true;
+            // Перевіряємо sold якщо не safe
+            if (!isSoldSafe) {
+                const soldTransfers = await getTokenTransfers(
+                    address,
+                    soldAddress,
+                    config.chain_id,
+                    block,
+                    block
+                );
+                if (Array.isArray(soldTransfers) && soldTransfers.length > 0) {
+                    delete swap._validation;
+                    return swap;
+                }
             }
-        }
 
-        if (shouldAdd) {
-            validatedSwaps.push(swap);
-        }
-    }
+            return null;
+        }))
+    );
 
+    const validatedSwaps = validationResults.filter(Boolean);
     const updatedSwapsArray = [...swapsArray, ...validatedSwaps];
+
     return {
         swaps: updatedSwapsArray,
         transfers: filteredTransfers

@@ -1,17 +1,20 @@
 require('dotenv').config();
 const axios = require('axios');
+const { logger } = require('../performanceLogger');
 
-// Simple in-memory cache for one-off and batch requests
 const dexSingleCache = new Map();
 const dexBatchCache = new Map();
 
-// Function to clear the cache after processing each address
 function clearDexCache() {
+    const stats = {
+        single: dexSingleCache.size,
+        batch: dexBatchCache.size
+    };
     dexSingleCache.clear();
     dexBatchCache.clear();
+    logger.logInfo(`Dexscreener cache cleared: ${JSON.stringify(stats)}`);
 }
 
-// Rate limiter for N calls per second
 class SimpleRateLimiter {
     constructor(maxPerSecond) {
         this.maxPerSecond = maxPerSecond;
@@ -26,7 +29,7 @@ class SimpleRateLimiter {
 
     _processQueue() {
         while (this.tokens > 0 && this.queue.length) {
-            const {fn, resolve, reject} = this.queue.shift();
+            const { fn, resolve, reject } = this.queue.shift();
             this.tokens--;
             fn().then(resolve).catch(reject);
         }
@@ -38,13 +41,19 @@ class SimpleRateLimiter {
                 this.tokens--;
                 fn().then(resolve).catch(reject);
             } else {
-                this.queue.push({fn, resolve, reject});
+                this.queue.push({ fn, resolve, reject });
             }
         });
     }
+
+    getQueueStatus() {
+        return {
+            queueLength: this.queue.length,
+            availableTokens: this.tokens
+        };
+    }
 }
 
-// free plan: ~5 requests per second for token-pairs endpoint
 const defaultLimiter = new SimpleRateLimiter(5);
 
 const api = axios.create({
@@ -54,15 +63,14 @@ const api = axios.create({
     },
 });
 
-// Logging headers for diagnostics (if present)
 const logHeaders = (headers) => {
     if (!headers) return;
-    ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining'].forEach(h => {
-        if (headers[h]) console.debug(`[Dexscreener Header] ${h}: ${headers[h]}`);
-    });
+    const remaining = headers['x-ratelimit-remaining'];
+    if (remaining && parseInt(remaining) < 10) {
+        logger.logWarning(`Dexscreener rate limit low: ${remaining} remaining`);
+    }
 };
 
-// Fetch with retries and exponential backoff
 const fetchWithRetry = async (fn, maxRetries = 5) => {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -88,12 +96,10 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
             const retryAfter = err.response?.headers?.['retry-after'];
             if (retryAfter) {
                 const serverWait = parseFloat(retryAfter) * 1000;
-                console.warn(`Server asked to retry after ${retryAfter}s; waiting ${Math.round(serverWait + 100)}ms`);
+                logger.logWarning(`Dexscreener retry-after: ${retryAfter}s`);
                 await new Promise(r => setTimeout(r, serverWait + 100));
             } else {
-                console.warn(
-                    `Dexscreener request failed (status=${status || 'network'}) attempt ${attempt + 1}, retrying in ${Math.round(wait)}ms`
-                );
+                logger.logWarning(`Dexscreener retry ${attempt + 1}/${maxRetries} in ${Math.round(wait)}ms`);
                 await new Promise(r => setTimeout(r, wait));
             }
         }
@@ -101,29 +107,34 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
     throw new Error('Exceeded max retries');
 };
 
-// Get single token-pair / price info
 const getDexscreenerTokenPrice = async (tokenAddress, chainId) => {
     const key = `${chainId}:${tokenAddress}`;
     if (dexSingleCache.has(key)) {
+        // Не логуємо cache hit для dex - їх багато
         return dexSingleCache.get(key);
     }
 
+    const timer = logger.startOperation('Dexscreener', 'getTokenPrice', `${chainId}:${tokenAddress.slice(0, 10)}...`);
     const url = `latest/dex/tokens/${tokenAddress}`;
+
     try {
         const response = await defaultLimiter.schedule(() =>
             fetchWithRetry(() => api.get(url))
         );
-        dexSingleCache.set(key, response.data);
 
-        if (response?.data?.pairs.length> 0) {
+        logger.endOperation(timer);
 
+        if (response?.data?.pairs?.length > 0) {
             const pairs = Array.isArray(response?.data?.pairs)
                 ? response.data.pairs
                 : Array.isArray(response?.data)
                     ? response.data
                     : [];
 
-            if (!pairs.length) return null;
+            if (!pairs.length) {
+                dexSingleCache.set(key, null);
+                return null;
+            }
 
             const toUsd = p => Number(p?.liquidity?.usd) || 0;
             const toTs = p => Number(p?.pairCreatedAt) || 0;
@@ -135,16 +146,23 @@ const getDexscreenerTokenPrice = async (tokenAddress, chainId) => {
                 return toTs(p) > toTs(best) ? p : best;
             }, null);
 
+            dexSingleCache.set(key, topPair);
+            logger.logInfo(`  └─ Found ${pairs.length} pairs, top liquidity: $${toUsd(topPair).toLocaleString()}`);
             return topPair;
         } else {
-            return response?.data?.pairs[0]
+            const result = response?.data?.pairs?.[0] || null;
+            dexSingleCache.set(key, result);
+            return result;
         }
 
     } catch (error) {
-        console.error(`Error fetching dexscreener price data for ${tokenAddress}:`, error.response?.data || error.message);
+        logger.endOperation(timer);
+        logger.logError(`Dexscreener failed for ${tokenAddress}: ${error.response?.data || error.message}`);
+        dexSingleCache.set(key, null);
         return null;
     }
 };
+
 module.exports = {
     getDexscreenerTokenPrice,
     clearDexCache,

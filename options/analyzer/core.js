@@ -1,6 +1,7 @@
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const {logger} = require('../../performanceLogger');
 
 const {
     getWalletTokenBalances,
@@ -38,39 +39,56 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
     const splitAddresses = addresses.split('\n');
     const clusterStatsCache = {};
 
-    // Process each wallet address one by one
+    logger.logInfo(`Starting batch processing of ${splitAddresses.length} addresses`);
+
     for (const address of splitAddresses) {
+        // ========== START ADDRESS PROCESSING ==========
+        logger.startAddress(address);
+
         try {
-            // Skip ERC-4337 EntryPoint addresses (they have massive transaction counts)
+            // Skip ERC-4337 EntryPoint addresses
             if (address.toLowerCase().startsWith('0x4337')) {
+                logger.logWarning('ERC-4337 EntryPoint address, skipping');
                 await bot.sendMessage(chatId,
                     `ERC4337  address \n\`${address}\``,
                     {parse_mode: 'MarkdownV2'}
                 );
+                logger.endAddress(address);
                 continue;
             }
 
-            // Get the active chains for a wallet address.
+            // ========== STAGE 1: Get Active Chains ==========
+            logger.logStage('STAGE 1: Getting active chains');
             const activeChains = await getActiveWalletChains(address);
-
             const chains = chainsToProcess.length === 1 ? chainsToProcess : activeChains;
+            logger.logInfo(`Processing chains: ${chains.join(', ')}`);
 
             const chainResults = {};
             for (const chainKey of chains) {
                 const cfg = config[chainKey];
-                if (!cfg) continue;
+                if (!cfg) {
+                    logger.logWarning(`No config for chain: ${chainKey}`);
+                    continue;
+                }
 
+                logger.logStage(`STAGE 2: Processing chain ${chainKey}`);
+
+                // ========== STAGE 2.1: Check if EOA ==========
+                logger.logStage('STAGE 2.1: Checking if address is EOA');
                 const isAddress = await getCode(address, cfg.rpc_url, cfg.chain);
 
                 if (isAddress) {
-                    // Get all transactions for the wallet address.
+                    // ========== STAGE 2.2: Get all transactions ==========
+                    logger.logStage('STAGE 2.2: Getting all transactions from Scan');
                     const transactions = await getAllTransactions(address, cfg.chain_id);
 
                     if (transactions.length < process.env.SCAN_TRANSACTIONS_COUNT) {
-                        // Get the full transaction history of a specified wallet address.
+                        // ========== STAGE 2.3: Get wallet history ==========
+                        logger.logStage('STAGE 2.3: Getting wallet history from Moralis');
                         const transactionsHistory = await getWalletHistory(address, cfg.chain);
 
                         if (transactionsHistory === 'TRANSACTIONS_COUNT_LIMIT') {
+                            logger.logWarning('Transaction count limit exceeded');
                             await bot.sendMessage(chatId,
                                 `Transactions count address more then ${process.env.SCAN_TRANSACTIONS_COUNT} \n\`${address}\``,
                                 {parse_mode: 'MarkdownV2'}
@@ -78,18 +96,26 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             continue;
                         }
 
-                        // Get native token price in USD
+                        // ========== STAGE 2.4: Get native token price ==========
+                        logger.logStage('STAGE 2.4: Getting native token price');
                         const {usdPrice} = await getTokenPrice(cfg.contract, cfg.chain);
 
-                        // Get token balances for a specific wallet address.
+                        // ========== STAGE 2.5: Get token balances ==========
+                        logger.logStage('STAGE 2.5: Getting token balances');
                         const balances = await getWalletTokenBalances(address, cfg.chain);
 
-                        // Get lost swaps and transfers.
+                        // ========== STAGE 2.6: Create history swaps ==========
+                        logger.logStage('STAGE 2.6: Creating history swaps', `${transactionsHistory.length} transactions`);
+                        const swapTimer = logger.createTimer('createHistorySwaps');
                         const {
                             swaps,
                             transfers
                         } = await createHistorySwaps(cfg, address, transactionsHistory, usdPrice);
+                        swapTimer.stop();
+                        logger.logInfo(`Found ${swaps.length} swaps, ${transfers.length} transfers`);
 
+                        // ========== STAGE 2.7: Prefetch addresses ==========
+                        logger.logStage('STAGE 2.7: Prefetching counterparty addresses');
                         const addressesToPrefetch = new Set();
                         for (const t of transfers) {
                             if (t.from) addressesToPrefetch.add(t.from);
@@ -118,12 +144,22 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
+                        // ========== STAGE 2.8: Process counterparties ==========
+                        logger.logStage('STAGE 2.8: Processing counterparties', `${Object.keys(initialStats).length} contracts`);
                         const thirdPartyCpTransfers = new Set();
                         const cpsCountByContract = new Map();
                         const cpBalancesByToken = {};
 
+                        let cpProcessedCount = 0;
+                        const totalContracts = Object.keys(initialStats).length;
+
                         for (const [contract] of Object.entries(initialStats)) {
+                            cpProcessedCount++;
                             const contractLc = contract.toLowerCase();
+
+                            if (cpProcessedCount % 10 === 0 || cpProcessedCount === totalContracts) {
+                                logger.logInfo(`Processing contract ${cpProcessedCount}/${totalContracts}`);
+                            }
 
                             const counterparties = [...new Set(
                                 transfers
@@ -150,12 +186,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 const cPtransactions = await getAllTransactions(cp, cfg.chain_id);
                                 const cpBalances = await getWalletTokenBalances(cp, cfg.chain);
 
-                                // Знаходимо баланс потрібного токена
                                 const cpTokenBalance = cpBalances.find(
                                     b => b.token_address?.toLowerCase() === contractLc
                                 );
-
-                                console.log('cpTokenBalance', cpTokenBalance)
 
                                 if (cpTokenBalance) {
                                     cpBalancesByToken[contractLc] = cpTokenBalance?.usd_value / usdPrice;
@@ -354,7 +387,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
-                        // dedupe swaps and transfers
+                        // ========== STAGE 2.9: Dedupe swaps and transfers ==========
+                        logger.logStage('STAGE 2.9: Deduplicating swaps and transfers');
+                        const dedupeTimer = logger.createTimer('dedupe');
+
                         const dedupeSwaps = (swapsArr) => {
                             const byKey = new Map();
                             const magnitude = (x) => {
@@ -388,9 +424,14 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             return out;
                         };
 
+                        const beforeDedupeSwaps = allSwaps.length;
+                        const beforeDedupeTransfers = allTransfers.length;
                         allSwaps = dedupeSwaps(allSwaps);
                         allTransfers = dedupeTransfers(allTransfers);
+                        dedupeTimer.stop();
+                        logger.logInfo(`Swaps: ${beforeDedupeSwaps} -> ${allSwaps.length}, Transfers: ${beforeDedupeTransfers} -> ${allTransfers.length}`);
 
+                        // Debug logging for specific transactions
                         const targetHashes = [
                             '0x9ead214cdd634f54ba3dab21e6bb1de562d44d3603c78ea21ee13b1549bb571e',
                             '0x97c8656c34ae63e64ce8c6414205e3fe8867d63e38ae253fa4061b42612362cb',
@@ -405,6 +446,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         matchingTransactions.forEach(tx => {
                             console.log('tx', tx);
                         });
+
+                        // ========== STAGE 2.10: Build token data ==========
+                        logger.logStage('STAGE 2.10: Building token data');
+                        const tokenDataTimer = logger.createTimer('buildTokenData');
 
                         const tokenData = {};
                         for (const swap of allSwaps) {
@@ -435,7 +480,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 continue;
                             }
 
-                            // Handle BUY transactions.
                             if (transactionType === 'buy' && boughtAddress) {
                                 const token = boughtAddress.toLowerCase();
 
@@ -457,7 +501,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 tokenData[token].trades.push(swap);
                             }
 
-                            // Handle SELL transactions.
                             if (transactionType === 'sell' && soldAddress) {
                                 const token = soldAddress.toLowerCase();
 
@@ -479,8 +522,13 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 tokenData[token].trades.push(swap);
                             }
                         }
+                        tokenDataTimer.stop();
+                        logger.logInfo(`Built data for ${Object.keys(tokenData).length} tokens`);
 
-                        // Convert USD balances to Native Token equivalents.
+                        // ========== STAGE 2.11: Convert balances to native token ==========
+                        logger.logStage('STAGE 2.11: Converting balances to native token equivalents');
+                        const balanceTimer = logger.createTimer('convertBalances');
+
                         for (const token of balances) {
                             const addr = token.token_address;
                             if (!tokenData[addr]) continue;
@@ -502,8 +550,9 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 tokenData[contractAddr].balance += cpBalance;
                             }
                         }
+                        balanceTimer.stop();
 
-                        // Remove tokens with no inflow and no trades.
+                        // Remove tokens with no inflow and no trades
                         for (const [contract, stats] of Object.entries(tokenData)) {
                             const inflowCount = allTransfers
                                 .filter(t =>
@@ -519,7 +568,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
-                        // Filter traded tokens.
+                        // Filter traded tokens
                         for (const token of [...cfg.excluded_contracts, address]) {
                             const lowerToken = token.toLowerCase();
                             if (tokenData[lowerToken]) {
@@ -527,19 +576,16 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             }
                         }
 
-                        // Merge virtual tokens.
+                        // Merge virtual tokens
                         if (cfg.chain === 'base') mergeVirtualTokens(tokenData);
 
-                        // Get transaction frequency for address.
+                        // ========== STAGE 2.12: Calculate metrics ==========
+                        logger.logStage('STAGE 2.12: Calculating transaction frequency and associated addresses');
                         const transaction_frequency = transactionsFrequency(address, transactionsHistory, swaps);
-
-                        // Get associated addresses.
                         const associated_addresses = await associatedAddresses(address, transactionsHistory, cfg);
 
-                        // Get first transaction that include native token.
                         const firstTransaction = transactionsHistory.find(tx => tx.summary && tx.summary.includes(cfg.symbol));
 
-                        // Add calculated data to JSON.
                         const addressData = {
                             chain_id: cfg.chain,
                             active_chains: activeChains,
@@ -561,11 +607,21 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             traded_tokens: {},
                         };
 
-                        // Values for calculating average PnL only for include === true.
+                        // ========== STAGE 2.13: Process each token ==========
+                        logger.logStage('STAGE 2.13: Processing individual tokens', `${Object.keys(tokenData).length} tokens`);
+                        const tokenProcessTimer = logger.createTimer('processTokens');
+
                         let sumIncludedPnls = 0;
                         let includedTokenCount = 0;
+                        let tokenProcessedCount = 0;
+                        const totalTokens = Object.keys(tokenData).length;
 
                         for (const [contract, stats] of Object.entries(tokenData)) {
+                            tokenProcessedCount++;
+                            if (tokenProcessedCount % 20 === 0 || tokenProcessedCount === totalTokens) {
+                                logger.logInfo(`Processing token ${tokenProcessedCount}/${totalTokens}`);
+                            }
+
                             let inflowCount = 0;
                             let outflowCount = 0;
                             let diffMinutes = null;
@@ -597,7 +653,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             const buyCount = stats.trades.filter(trade => trade.transactionType === 'buy').length;
                             const sellCount = stats.trades.filter(trade => trade.transactionType === 'sell').length;
 
-                            // if there are no buys, set diffMinutes to null.
                             if (buyCount === 0) {
                                 diffMinutes = null;
                             }
@@ -608,14 +663,12 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                             const isProfitable = stats.spent > 0 ? realizedPnl > 0 : null;
 
-                            // Variables for determining the number of tokens received during transfers with contracts
                             let tokenInTransferToContract = 0;
                             let tokenOutTransferToContract = 0;
 
                             let hasContractTransfer = false;
 
                             for (const transfer of tokenTransfers) {
-
                                 const v = Math.abs(parseFloat(transfer.value));
                                 if (['send', 'token send'].includes(transfer.category)) {
                                     outflowCount++;
@@ -635,8 +688,6 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 }
                             }
 
-                            // CONTRACT_TRANSFERS check (any outgoing transfer to contract)
-                            // Check unique 'to' recipients for outflow
                             const outRecipients = [...new Set(
                                 tokenTransfers
                                     .filter(t => ['send', 'token send'].includes(t.category))
@@ -652,10 +703,7 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 }
                             }
 
-
                             let unmatchedTransfersFlag = false;
-
-                            // If tokenOutTransferToContract <= 75% of tokenInTransferToContract.
 
                             const threshold = tokenInTransferToContract * 0.75;
                             const includeTransaction = tokenOutTransferToContract <= threshold && (tokenInTransferToContract > 0 || tokenOutTransferToContract > 0);
@@ -690,13 +738,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 exclude_reason = 'DATA_MISTAKE';
                             }
 
-                            // The average PNL should be calculated based on tokens with "include": true.
                             if (include === true) {
                                 sumIncludedPnls += realizedPnl;
                                 includedTokenCount++;
                             }
 
-                            // Calculate average holding time in hours.
                             const avgHoldingHours = averageHoldingHours(stats.trades);
                             const n = diffMinutes == null ? null : Number(diffMinutes);
                             const earlyEntry = n == null ? null : n <= 5;
@@ -741,15 +787,17 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                                 }
                             }
                         }
+                        tokenProcessTimer.stop();
 
-                        // Calculate overall average PnL for the address
+                        // ========== STAGE 2.14: Calculate performance score ==========
+                        logger.logStage('STAGE 2.14: Calculating performance score');
+
                         const overallAverageIncluded = includedTokenCount
                             ? (sumIncludedPnls / includedTokenCount)
                             : 0;
 
                         addressData.average_pnl = Number(overallAverageIncluded.toFixed(2));
 
-                        // ====== Use only included tokens for performance score ======
                         const ROI_CAP_HI = 1500;
                         const ROI_CAP_LO = -100;
                         const EPS_MEAN = 1e-6;
@@ -817,8 +865,11 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             excluded_tokens: tokens.filter(t => t.include === false).map(t => t.contract),
                         };
 
+                        logger.logInfo(`Performance: ${includedTokenCount} included tokens, avg PnL: ${addressData.average_pnl}`);
 
-                        // Save result for this chain
+                        // ========== STAGE 2.15: Save and send results ==========
+                        logger.logStage('STAGE 2.15: Saving and sending results');
+
                         chainResults[chainKey] = addressData;
 
                         const filePath = `${addressData.average_pnl}${cfg.symbol.toLowerCase()} - ${address}.json`;
@@ -829,17 +880,21 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                         fs.unlinkSync(filePath);
 
+                        // ========== STAGE 2.16: Clear caches ==========
+                        logger.logStage('STAGE 2.16: Clearing caches');
                         clearMoralisCache();
                         clearScanCache();
                         clearDexCache();
                         clearCodeCache();
                     } else {
+                        logger.logWarning(`Transaction count exceeds limit: ${transactions.length}`);
                         await bot.sendMessage(chatId,
                             `Transactions count address more then ${process.env.SCAN_TRANSACTIONS_COUNT} \n\`${address}\``,
                             {parse_mode: 'MarkdownV2'}
                         );
                     }
                 } else {
+                    logger.logWarning('Address is a contract, not EOA');
                     await bot.sendMessage(chatId,
                         `Address is contract \n\`${address}\``,
                         {parse_mode: 'MarkdownV2'}
@@ -847,7 +902,10 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                 }
             }
 
+            // ========== STAGE 3: Multi-chain aggregation ==========
             if (chains.length > 1) {
+                logger.logStage('STAGE 3: Multi-chain aggregation');
+
                 const chain_stats = {};
                 const summary_tags = [];
                 let bestChain = null;
@@ -899,14 +957,18 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
 
                 fs.writeFileSync(aggPath, JSON.stringify(aggregated, null, 2));
 
-
                 await bot.sendDocument(chatId, aggPath, {caption: `\`${address}\``, parse_mode: 'Markdown'});
 
                 fs.unlinkSync(aggPath);
             }
 
+            // ========== END ADDRESS PROCESSING ==========
+            logger.endAddress(address);
+
         } catch (error) {
             console.error(`Error parsing wallet ${address}:`, error);
+            logger.logError(`Fatal error: ${error.message}`);
+            logger.endAddress(address);
             await bot.sendMessage(chatId,
                 `Error parsing wallet \`${address}\`: ${error.message}`,
                 {parse_mode: 'Markdown'}

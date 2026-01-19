@@ -367,7 +367,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
         }
     }
 
-    // Check lost swaps in transfers.
+    // Check lost swaps in transfers
     const {swaps, transfers} = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray, nativeTokenPrice);
     return {
         swaps,

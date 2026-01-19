@@ -1,15 +1,24 @@
 require('dotenv').config();
 const axios = require('axios');
+const { logger } = require('../performanceLogger');
 
 const txCache = new Map();
 const tokenTxCache = new Map();
 
+// In-flight request tracking - ключ БЕЗ блоків
+const inFlightRequests = new Map();
+
 function clearScanCache() {
+    const stats = {
+        transactions: txCache.size,
+        tokenTransfers: tokenTxCache.size
+    };
     txCache.clear();
     tokenTxCache.clear();
+    inFlightRequests.clear();
+    logger.logInfo(`Scan cache cleared: ${JSON.stringify(stats)}`);
 }
 
-// Rate limiter for N calls per second
 class SimpleRateLimiter {
     constructor(maxPerSecond) {
         this.maxPerSecond = maxPerSecond;
@@ -24,7 +33,7 @@ class SimpleRateLimiter {
 
     _processQueue() {
         while (this.tokens > 0 && this.queue.length) {
-            const {fn, resolve, reject} = this.queue.shift();
+            const { fn, resolve, reject } = this.queue.shift();
             this.tokens--;
             fn().then(resolve).catch(reject);
         }
@@ -36,13 +45,20 @@ class SimpleRateLimiter {
                 this.tokens--;
                 fn().then(resolve).catch(reject);
             } else {
-                this.queue.push({fn, resolve, reject});
+                this.queue.push({ fn, resolve, reject });
             }
         });
     }
+
+    getQueueStatus() {
+        return {
+            queueLength: this.queue.length,
+            availableTokens: this.tokens
+        };
+    }
 }
 
-const defaultLimiter = new SimpleRateLimiter(5); // free: 5 req/sec
+const defaultLimiter = new SimpleRateLimiter(5);
 
 const api = axios.create({
     baseURL: 'https://api.etherscan.io/v2/api',
@@ -52,16 +68,14 @@ const api = axios.create({
     timeout: 60000,
 });
 
-// — Логування радіт-лімітів із заголовків відповіді
 const logHeaders = (headers) => {
     if (!headers) return;
-    ['retry-after', 'x-ratelimit-limit', 'x-ratelimit-remaining']
-        .forEach(h => {
-            if (headers[h]) console.debug(`[Etherscan Header] ${h}: ${headers[h]}`);
-        });
+    const remaining = headers['x-ratelimit-remaining'];
+    if (remaining && parseInt(remaining) < 10) {
+        logger.logWarning(`Etherscan rate limit low: ${remaining} remaining`);
+    }
 };
 
-// Fetch with retries and exponential backoff
 const fetchWithRetry = async (fn, maxRetries = 5) => {
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
@@ -87,24 +101,24 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
             const retryAfter = err.response?.headers?.['retry-after'];
             if (retryAfter) {
                 const serverWait = parseFloat(retryAfter) * 1000;
-                console.warn(`Server asked to retry after ${retryAfter}s; waiting ${Math.round(serverWait + 100)}ms`);
+                logger.logWarning(`Etherscan retry-after: ${retryAfter}s`);
                 await new Promise(r => setTimeout(r, serverWait + 100));
             } else {
-                console.warn(
-                    `Request failed (status=${status || 'network'}) attempt ${attempt + 1}, retrying in ${Math.round(wait)}ms`
-                );
+                logger.logWarning(`Etherscan retry ${attempt + 1}/${maxRetries} in ${Math.round(wait)}ms`);
                 await new Promise(r => setTimeout(r, wait));
             }
         }
     }
 };
 
-// Scan API to retrieve all transactions for a given address on a specific chain, з кешем
 const getAllTransactions = async (address, chain_id, maxTx = +process.env.SCAN_TRANSACTIONS_COUNT) => {
-    const key = `${address}:${chain_id}:${maxTx}`;
+    const key = `tx:${address}:${chain_id}:${maxTx}`;
     if (txCache.has(key)) {
+        logger.logInfo(`Scan transactions CACHE HIT: ${address.slice(0, 10)}...`);
         return txCache.get(key);
     }
+
+    const timer = logger.startOperation('Scan', 'getAllTransactions', `chain ${chain_id}:${address.slice(0, 10)}...`);
 
     try {
         const params = {
@@ -121,21 +135,30 @@ const getAllTransactions = async (address, chain_id, maxTx = +process.env.SCAN_T
         };
 
         const response = await defaultLimiter.schedule(() =>
-            fetchWithRetry(() => api.get('', {params}))
+            fetchWithRetry(() => api.get('', { params }))
         );
 
         const all = response.data.result || [];
         const sliced = all.length > maxTx ? all.slice(0, maxTx) : all;
 
         txCache.set(key, sliced);
+        logger.endOperation(timer);
+        logger.logInfo(`  └─ ${sliced.length} transactions`);
         return sliced;
     } catch (error) {
-        console.error(`Error fetching transactions for ${address}:`, error.response?.data || error.message);
+        logger.endOperation(timer);
+        logger.logError(`Scan transactions failed: ${error.response?.data || error.message}`);
         return [];
     }
 };
 
-// Scan API to retrieve token transfers, з кешем
+/**
+ * Get token transfers with in-flight deduplication
+ *
+ * ВАЖЛИВО: startBlock/endBlock ігноруються для кешування!
+ * Завжди завантажуємо ВСІ трансфери і кешуємо.
+ * Логіка валідації просто перевіряє чи існують трансфери взагалі.
+ */
 const getTokenTransfers = async (
     address,
     contractAddress,
@@ -143,42 +166,92 @@ const getTokenTransfers = async (
     startBlock = 0,
     endBlock = 99999999
 ) => {
-    const key = `${address}:${contractAddress}:${chain_id}`;
-    if (tokenTxCache.has(key)) {
-        return tokenTxCache.get(key);
+    // Ключ БЕЗ блоків - завжди кешуємо повний результат
+    const cacheKey = `${address.toLowerCase()}:${contractAddress.toLowerCase()}:${chain_id}`;
+
+    // 1. Перевіряємо кеш
+    if (tokenTxCache.has(cacheKey)) {
+        return tokenTxCache.get(cacheKey);
     }
 
-    try {
-        const params = {
-            module: 'account',
-            action: 'tokentx',
-            address,
-            contractaddress: contractAddress,
-            startblock: startBlock,
-            endblock: endBlock,
-            sort: 'asc',
-            apikey: process.env.SCAN_API_KEY,
-            chainid: chain_id,
-        };
+    // 2. Перевіряємо чи вже є in-flight запит
+    if (inFlightRequests.has(cacheKey)) {
+        return inFlightRequests.get(cacheKey);
+    }
 
-        const response = await defaultLimiter.schedule(() =>
-            fetchWithRetry(() => api.get('', {params}))
-        );
+    // 3. Створюємо новий запит
+    const requestPromise = (async () => {
+        const timer = logger.startOperation('Scan', 'getTokenTransfers',
+            `chain ${chain_id}:${address.slice(0, 10)}... token:${contractAddress.slice(0, 10)}...`);
 
-        const result = response.data.result || [];
-        tokenTxCache.set(key, result);
-        return result;
-    } catch (error) {
-        console.error(
-            `Error fetching token transfers for ${address} (token: ${contractAddress}):`,
-            error.response?.data || error.message
+        try {
+            // Завжди запитуємо ВСІ трансфери (0-99999999)
+            const params = {
+                module: 'account',
+                action: 'tokentx',
+                address,
+                contractaddress: contractAddress,
+                startblock: 0,
+                endblock: 99999999,
+                sort: 'asc',
+                apikey: process.env.SCAN_API_KEY,
+                chainid: chain_id,
+            };
+
+            const response = await defaultLimiter.schedule(() =>
+                fetchWithRetry(() => api.get('', { params }))
+            );
+
+            const result = response.data.result || [];
+            tokenTxCache.set(cacheKey, result);
+            logger.endOperation(timer);
+            logger.logInfo(`  └─ ${result.length} token transfers`);
+            return result;
+        } catch (error) {
+            logger.endOperation(timer);
+            logger.logError(`Scan token transfers failed: ${error.response?.data || error.message}`);
+            return [];
+        } finally {
+            inFlightRequests.delete(cacheKey);
+        }
+    })();
+
+    inFlightRequests.set(cacheKey, requestPromise);
+    return requestPromise;
+};
+
+/**
+ * Prefetch token transfers for multiple contracts in parallel
+ */
+const prefetchTokenTransfers = async (address, contractAddresses, chain_id, concurrency = 5) => {
+    const unique = [...new Set(contractAddresses.map(a => a.toLowerCase()))];
+    const addressLower = address.toLowerCase();
+
+    // Filter already cached or in-flight
+    const uncached = unique.filter(contract => {
+        const key = `${addressLower}:${contract}:${chain_id}`;
+        return !tokenTxCache.has(key) && !inFlightRequests.has(key);
+    });
+
+    if (uncached.length === 0) {
+        logger.logInfo(`Prefetch: all ${unique.length} contracts already cached/in-flight`);
+        return;
+    }
+
+    logger.logInfo(`Prefetch: ${uncached.length}/${unique.length} contracts need fetching`);
+
+    // Process in chunks
+    for (let i = 0; i < uncached.length; i += concurrency) {
+        const chunk = uncached.slice(i, i + concurrency);
+        await Promise.all(
+            chunk.map(contract => getTokenTransfers(address, contract, chain_id))
         );
-        return [];
     }
 };
 
 module.exports = {
     getAllTransactions,
     getTokenTransfers,
+    prefetchTokenTransfers,
     clearScanCache,
 };
