@@ -7,8 +7,8 @@ const {
     getWalletTokenBalances,
     getActiveWalletChains,
     getTokenPrice,
-    getTokenPricesBatch,      // <-- ДОДАНО
-    prefetchTokenPrices,       // <-- ДОДАНО
+    getTokenPricesBatch,      // <-- Є, але тепер реально викликаємо
+    prefetchTokenPrices,       // <-- залишив як було (структуру не чіпаю)
     getWalletHistory,
     clearMoralisCache,
 } = require('../../api/moralis');
@@ -113,30 +113,40 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                         logger.logStage('STAGE 2.5: Getting token balances');
                         const balances = await getWalletTokenBalances(address, cfg.chain);
 
-                        // ========== STAGE 2.5.5: PREFETCH Moralis token prices ==========
-                        // Це головна оптимізація! Збираємо всі токени з history і prefetch їх ціни
+                        // ========== STAGE 2.5.5: BATCH PREFETCH Moralis token prices ==========
+                        // НЕ змінюю структуру — тільки додаю реальний виклик getTokenPricesBatch
                         logger.logStage('STAGE 2.5.5: Prefetching Moralis token prices for swap processing');
                         const prefetchPriceTimer = logger.createTimer('moralisPricePrefetch');
 
                         const tokenAddressesForPricePrefetch = new Set();
+
+                        // Локальний helper: без зміни зовнішньої структури
+                        const pickTokenAddr = (obj) => (
+                            obj?.token_address ||
+                            obj?.tokenAddress ||
+                            obj?.address ||
+                            obj?.contract_address ||
+                            obj?.contractAddress ||
+                            obj?.token?.address ||
+                            obj?.tokenAddress?.address ||
+                            obj?.tokenAddress?.token_address
+                        );
 
                         // Збираємо токени з transactionsHistory
                         for (const tx of transactionsHistory) {
                             // З erc20_transfers
                             if (tx.erc20_transfers) {
                                 for (const et of tx.erc20_transfers) {
-                                    if (et.address) {
-                                        tokenAddressesForPricePrefetch.add(et.address.toLowerCase());
-                                    }
+                                    const a = pickTokenAddr(et);
+                                    if (a) tokenAddressesForPricePrefetch.add(String(a).toLowerCase());
                                 }
                             }
 
                             // З native_transfers
                             if (tx.native_transfers) {
                                 for (const nt of tx.native_transfers) {
-                                    if (nt.token_address) {
-                                        tokenAddressesForPricePrefetch.add(nt.token_address.toLowerCase());
-                                    }
+                                    const a = pickTokenAddr(nt) || nt?.token_address;
+                                    if (a) tokenAddressesForPricePrefetch.add(String(a).toLowerCase());
                                 }
                             }
 
@@ -158,15 +168,18 @@ const walletParserCore = async (addresses, bot, chatId, chainsToProcess) => {
                             tokenAddressesForPricePrefetch.delete(excluded.toLowerCase());
                         }
 
-                        // Batch prefetch всіх цін ПЕРЕД createHistorySwaps
+                        // Логи щоб 100% бачити що batch викликається/не викликається
+                        logger.logInfo(`Moralis prefetch candidates: ${tokenAddressesForPricePrefetch.size}`);
+
+                        // ГОЛОВНЕ: batch виклик (а не тільки prefetchTokenPrices)
                         if (tokenAddressesForPricePrefetch.size > 0) {
-                            await prefetchTokenPrices([...tokenAddressesForPricePrefetch], cfg.chain);
-                            logger.logInfo(`Prefetched Moralis prices for ${tokenAddressesForPricePrefetch.size} tokens`);
+                            await getTokenPricesBatch([...tokenAddressesForPricePrefetch], cfg.chain);
+                            logger.logInfo(`Batch prefetched Moralis prices for ${tokenAddressesForPricePrefetch.size} tokens`);
                         }
+
                         prefetchPriceTimer.stop();
 
                         // ========== STAGE 2.6: Create history swaps ==========
-                        // Тепер getTokenPrice всередині createHistorySwaps буде використовувати cache hits!
                         logger.logStage('STAGE 2.6: Creating history swaps', `${transactionsHistory.length} transactions`);
                         const swapTimer = logger.createTimer('createHistorySwaps');
                         const {

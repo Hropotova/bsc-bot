@@ -1,4 +1,4 @@
-const {getTokenPrice} = require('../../api/moralis');
+const {getTokenPrice, getTokenPricesBatch} = require('../../api/moralis');
 
 const {checkLostSwapsInTransfers} = require('./services');
 
@@ -18,8 +18,12 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
         if (tx.category === 'token swap') {
             const {erc20_transfers = [], native_transfers = []} = tx;
 
-            const fromTransfers = erc20_transfers.filter(t => t.from_address.toLowerCase() === address.toLowerCase());
-            const toTransfers = erc20_transfers.filter(t => t.to_address.toLowerCase() === address.toLowerCase());
+            const fromTransfers = erc20_transfers.filter(
+                t => t.from_address.toLowerCase() === address.toLowerCase()
+            );
+            const toTransfers = erc20_transfers.filter(
+                t => t.to_address.toLowerCase() === address.toLowerCase()
+            );
 
             let symbolOut, contractOut;
             let symbolIn, contractIn;
@@ -33,13 +37,16 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 contractIn = fromTransfers[0].address;
             }
 
-            const nativeSend = native_transfers.find(n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send');
-            const nativeReceive = native_transfers.find(n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive');
+            const nativeSend = native_transfers.find(
+                n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send'
+            );
+            const nativeReceive = native_transfers.find(
+                n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive'
+            );
 
             let typeSwap;
 
             if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].address.toLowerCase() !== virtualContract) {
-
                 const amountOutRaw = toTransfers
                     .filter(t => t.address.toLowerCase() === contractOut)
                     .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
@@ -168,6 +175,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 ![...config.stable_coins, config.contract, virtualContract].includes(toTransfers[0].address.toLowerCase())
             ) {
                 typeSwap = 3;
+
                 const amountIn = fromTransfers
                     .filter(t => t.address.toLowerCase() === contractIn)
                     .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
@@ -175,8 +183,25 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     .filter(t => t.address.toLowerCase() === contractOut)
                     .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
 
-                const priceIn = await getTokenPrice(fromTransfers[0].address, config.chain, tx.block_number);
-                const priceOut = await getTokenPrice(toTransfers[0].address, config.chain, tx.block_number);
+                // =========================
+                // BATCH PRICE (для 2 токенів в одному tx)
+                // =========================
+                const blockNumber = tx.block_number;
+                const addrIn = fromTransfers[0].address?.toLowerCase();
+                const addrOut = toTransfers[0].address?.toLowerCase();
+
+                let priceIn = null;
+                let priceOut = null;
+
+                if (addrIn && addrOut && blockNumber != null) {
+                    const batch = await getTokenPricesBatch([addrIn, addrOut], config.chain, Number(blockNumber));
+                    priceIn = batch.get(addrIn) ?? null;
+                    priceOut = batch.get(addrOut) ?? null;
+                }
+
+                // fallback (на всякий, якщо batch не повернув)
+                if (!priceIn) priceIn = await getTokenPrice(fromTransfers[0].address, config.chain, tx.block_number);
+                if (!priceOut) priceOut = await getTokenPrice(toTransfers[0].address, config.chain, tx.block_number);
 
                 swapsArray.push({
                     transactionType: 'buy',
@@ -194,7 +219,9 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     },
                     sold: {
                         symbol: config.trade_symbol,
-                        amount: priceOut?.usdPrice ? -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice) : -((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
+                        amount: priceOut?.usdPrice
+                            ? -((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice)
+                            : -((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice),
                         pairAddress: toTransfers[0].from_address
                     }
                 });
@@ -209,7 +236,9 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     category: tx.category,
                     bought: {
                         symbol: config.trade_symbol,
-                        amount: priceIn?.usdPrice ? ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice) : ((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
+                        amount: priceIn?.usdPrice
+                            ? ((amountIn * priceIn?.usdPrice || 0) / nativeTokenPrice)
+                            : ((amountOut * priceOut?.usdPrice || 0) / nativeTokenPrice),
                         pairAddress: fromTransfers[0].to_address
                     },
                     sold: {
@@ -295,7 +324,17 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     pairAddress: toTransfers[0].from_address
                 };
             } else if (contractOut.toLowerCase() === virtualContract && config.chain === 'base') {
-                const virtualPrice = await getTokenPrice(contractOut, config.chain, tx.block_number);
+                // =========================
+                // BATCH PRICE (virtual)
+                // =========================
+                const blockNumber = tx.block_number;
+                let virtualPrice = null;
+
+                if (blockNumber != null) {
+                    const batch = await getTokenPricesBatch([virtualContract], config.chain, Number(blockNumber));
+                    virtualPrice = batch.get(virtualContract) ?? null;
+                }
+                if (!virtualPrice) virtualPrice = await getTokenPrice(contractOut, config.chain, tx.block_number);
 
                 transactionType = 'sell';
                 typeSwap = 8;
@@ -313,7 +352,17 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     pairAddress: fromTransfers[0].to_address
                 };
             } else if (contractIn.toLowerCase() === virtualContract && config.chain === 'base') {
-                const virtualPrice = await getTokenPrice(contractIn, config.chain, tx.block_number);
+                // =========================
+                // BATCH PRICE (virtual)
+                // =========================
+                const blockNumber = tx.block_number;
+                let virtualPrice = null;
+
+                if (blockNumber != null) {
+                    const batch = await getTokenPricesBatch([virtualContract], config.chain, Number(blockNumber));
+                    virtualPrice = batch.get(virtualContract) ?? null;
+                }
+                if (!virtualPrice) virtualPrice = await getTokenPrice(contractIn, config.chain, tx.block_number);
 
                 transactionType = 'buy';
                 typeSwap = 9;
@@ -351,7 +400,10 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             const from = tx.erc20_transfers.length > 0 ? tx.erc20_transfers[0].from_address : tx.from_address;
             const to = tx.erc20_transfers.length > 0 ? tx.erc20_transfers[0].to_address : tx.to_address;
 
-            if ((from?.toLowerCase() === address?.toLowerCase() || to?.toLowerCase() === address?.toLowerCase()) && Number(tx?.erc20_transfers[0]?.value_formatted) > 0) {
+            if (
+                (from?.toLowerCase() === address?.toLowerCase() || to?.toLowerCase() === address?.toLowerCase()) &&
+                Number(tx?.erc20_transfers[0]?.value_formatted) > 0
+            ) {
                 transfersArray.push({
                     transactionHash: tx?.hash,
                     tokenSymbol: transfer?.token_symbol,
@@ -359,7 +411,9 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     value: tx?.erc20_transfers[0]?.value_formatted,
                     contract: transfer?.address,
                     summary: tx?.summary,
-                    category: tx?.category === 'contract interaction' ? from?.toLowerCase() === address?.toLowerCase() ? 'send' : 'receive' : tx?.category,
+                    category: tx?.category === 'contract interaction'
+                        ? (from?.toLowerCase() === address?.toLowerCase() ? 'send' : 'receive')
+                        : tx?.category,
                     from,
                     to,
                 });
@@ -368,7 +422,10 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
     }
 
     // Check lost swaps in transfers
-    const {swaps, transfers} = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray, nativeTokenPrice);
+    const {
+        swaps,
+        transfers
+    } = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray, nativeTokenPrice);
     return {
         swaps,
         transfers
