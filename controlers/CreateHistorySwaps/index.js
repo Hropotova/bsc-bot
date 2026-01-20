@@ -1,19 +1,78 @@
 const {getTokenPrice, getTokenPricesBatch} = require('../../api/moralis');
-
 const {checkLostSwapsInTransfers} = require('./services');
 
 const createHistorySwaps = async (config, address, transactions, nativeTokenPrice) => {
     const swapsArray = [];
     const transfersArray = [];
     const virtualContract = '0x0b3e328455c4059EEb9e3f84b5543F74E24e7E1b'.toLowerCase();
-    const TX_CATEGORIES = [
-        'send',
-        'receive',
-        'token send',
-        'token receive',
-        'contract interaction'
-    ];
+    const TX_CATEGORIES = ['send', 'receive', 'token send', 'token receive', 'contract interaction'];
 
+    // ============================================================
+    // PHASE 1: Збираємо ВСІ потрібні (token, block) пари
+    // ============================================================
+    const priceRequests = new Map(); // key: `${token}:${block}` -> { token, block }
+
+    for (const tx of transactions) {
+        if (tx.category !== 'token swap') continue;
+
+        const {erc20_transfers = [], native_transfers = []} = tx;
+        const fromTransfers = erc20_transfers.filter(t => t.from_address.toLowerCase() === address.toLowerCase());
+        const toTransfers = erc20_transfers.filter(t => t.to_address.toLowerCase() === address.toLowerCase());
+
+        if (!fromTransfers.length || !toTransfers.length) continue;
+
+        const contractIn = fromTransfers[0]?.address?.toLowerCase();
+        const contractOut = toTransfers[0]?.address?.toLowerCase();
+        const blockNumber = tx.block_number;
+
+        if (!blockNumber) continue;
+
+        // Визначаємо чи це typeSwap 3, 8, або 9
+        const nativeSend = native_transfers.find(n => n.from_address.toLowerCase() === address.toLowerCase() && n.direction === 'send');
+        const nativeReceive = native_transfers.find(n => n.to_address.toLowerCase() === address.toLowerCase() && n.direction === 'receive');
+
+        const isTypeSwap3 = fromTransfers.length && toTransfers.length &&
+            ![...config.stable_coins, config.contract, virtualContract].includes(contractIn) &&
+            ![...config.stable_coins, config.contract, virtualContract].includes(contractOut);
+
+        const isTypeSwap8 = contractOut === virtualContract && config.chain === 'base';
+        const isTypeSwap9 = contractIn === virtualContract && config.chain === 'base';
+
+        if (isTypeSwap3 && contractIn && contractOut) {
+            priceRequests.set(`${contractIn}:${blockNumber}`, { token: contractIn, block: blockNumber });
+            priceRequests.set(`${contractOut}:${blockNumber}`, { token: contractOut, block: blockNumber });
+        } else if (isTypeSwap8 || isTypeSwap9) {
+            priceRequests.set(`${virtualContract}:${blockNumber}`, { token: virtualContract, block: blockNumber });
+        }
+    }
+
+    // ============================================================
+    // PHASE 2: Групуємо по блоках і робимо ПАРАЛЕЛЬНІ запити
+    // ============================================================
+    if (priceRequests.size > 0) {
+        const byBlock = new Map(); // block -> [tokens]
+        for (const { token, block } of priceRequests.values()) {
+            if (!byBlock.has(block)) byBlock.set(block, new Set());
+            byBlock.get(block).add(token);
+        }
+
+        // Паралельно запитуємо ціни (до 5 блоків одночасно)
+        const PARALLEL_LIMIT = 5;
+        const blockEntries = [...byBlock.entries()];
+
+        for (let i = 0; i < blockEntries.length; i += PARALLEL_LIMIT) {
+            const chunk = blockEntries.slice(i, i + PARALLEL_LIMIT);
+            await Promise.all(
+                chunk.map(([block, tokens]) =>
+                    getTokenPricesBatch([...tokens], config.chain, Number(block))
+                )
+            );
+        }
+    }
+
+    // ============================================================
+    // PHASE 3: Основний цикл (ціни вже в кеші!)
+    // ============================================================
     for (const tx of transactions) {
         if (tx.category === 'token swap') {
             const {erc20_transfers = [], native_transfers = []} = tx;
@@ -31,7 +90,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 symbolOut = toTransfers[0].token_symbol;
                 contractOut = toTransfers[0].address;
             }
-
             if (fromTransfers.length) {
                 symbolIn = fromTransfers[0].token_symbol;
                 contractIn = fromTransfers[0].address;
@@ -46,6 +104,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
 
             let typeSwap;
 
+            // typeSwap 1: native -> stablecoin
             if (!fromTransfers.length && toTransfers.length && nativeSend && toTransfers[0].address.toLowerCase() !== virtualContract) {
                 const amountOutRaw = toTransfers
                     .filter(t => t.address.toLowerCase() === contractOut)
@@ -105,6 +164,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 continue;
             }
 
+            // typeSwap 2: token -> native
             if (fromTransfers.length && !toTransfers.length && nativeReceive && fromTransfers[0].address.toLowerCase() !== virtualContract) {
                 const amountInRaw = fromTransfers
                     .filter(t => t.address.toLowerCase() === contractIn)
@@ -168,6 +228,7 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                 continue;
             }
 
+            // typeSwap 3: token <-> token (обидва НЕ native/stable/virtual)
             if (
                 fromTransfers.length &&
                 toTransfers.length &&
@@ -183,25 +244,14 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     .filter(t => t.address.toLowerCase() === contractOut)
                     .reduce((sum, t) => sum + parseFloat(t.value_formatted || '0'), 0);
 
-                // =========================
-                // BATCH PRICE (для 2 токенів в одному tx)
-                // =========================
                 const blockNumber = tx.block_number;
                 const addrIn = fromTransfers[0].address?.toLowerCase();
                 const addrOut = toTransfers[0].address?.toLowerCase();
 
-                let priceIn = null;
-                let priceOut = null;
-
-                if (addrIn && addrOut && blockNumber != null) {
-                    const batch = await getTokenPricesBatch([addrIn, addrOut], config.chain, Number(blockNumber));
-                    priceIn = batch.get(addrIn) ?? null;
-                    priceOut = batch.get(addrOut) ?? null;
-                }
-
-                // fallback (на всякий, якщо batch не повернув)
-                if (!priceIn) priceIn = await getTokenPrice(fromTransfers[0].address, config.chain, tx.block_number);
-                if (!priceOut) priceOut = await getTokenPrice(toTransfers[0].address, config.chain, tx.block_number);
+                // Ціни вже в кеші після PHASE 2!
+                const batch = await getTokenPricesBatch([addrIn, addrOut], config.chain, Number(blockNumber));
+                const priceIn = batch.get(addrIn) ?? null;
+                const priceOut = batch.get(addrOut) ?? null;
 
                 swapsArray.push({
                     transactionType: 'buy',
@@ -266,7 +316,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             if (contractIn.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'buy';
                 typeSwap = 4;
-
                 bought = {
                     symbol: symbolOut,
                     amount: amountOut,
@@ -281,7 +330,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             } else if (contractOut.toLowerCase() === config.contract.toLowerCase()) {
                 transactionType = 'sell';
                 typeSwap = 5;
-
                 sold = {
                     symbol: symbolIn,
                     amount: amountIn,
@@ -296,7 +344,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             } else if (config.stable_coins.includes(contractOut)) {
                 transactionType = 'sell';
                 typeSwap = 6;
-
                 sold = {
                     symbol: symbolIn,
                     amount: amountIn,
@@ -311,7 +358,6 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
             } else if (config.stable_coins.includes(contractIn)) {
                 transactionType = 'buy';
                 typeSwap = 7;
-
                 bought = {
                     symbol: symbolOut,
                     amount: amountOut,
@@ -324,21 +370,13 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     pairAddress: toTransfers[0].from_address
                 };
             } else if (contractOut.toLowerCase() === virtualContract && config.chain === 'base') {
-                // =========================
-                // BATCH PRICE (virtual)
-                // =========================
+                // Ціна вже в кеші!
                 const blockNumber = tx.block_number;
-                let virtualPrice = null;
-
-                if (blockNumber != null) {
-                    const batch = await getTokenPricesBatch([virtualContract], config.chain, Number(blockNumber));
-                    virtualPrice = batch.get(virtualContract) ?? null;
-                }
-                if (!virtualPrice) virtualPrice = await getTokenPrice(contractOut, config.chain, tx.block_number);
+                const batch = await getTokenPricesBatch([virtualContract], config.chain, Number(blockNumber));
+                const virtualPrice = batch.get(virtualContract) ?? null;
 
                 transactionType = 'sell';
                 typeSwap = 8;
-
                 sold = {
                     symbol: symbolIn,
                     amount: amountIn,
@@ -352,21 +390,13 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
                     pairAddress: fromTransfers[0].to_address
                 };
             } else if (contractIn.toLowerCase() === virtualContract && config.chain === 'base') {
-                // =========================
-                // BATCH PRICE (virtual)
-                // =========================
+                // Ціна вже в кеші!
                 const blockNumber = tx.block_number;
-                let virtualPrice = null;
-
-                if (blockNumber != null) {
-                    const batch = await getTokenPricesBatch([virtualContract], config.chain, Number(blockNumber));
-                    virtualPrice = batch.get(virtualContract) ?? null;
-                }
-                if (!virtualPrice) virtualPrice = await getTokenPrice(contractIn, config.chain, tx.block_number);
+                const batch = await getTokenPricesBatch([virtualContract], config.chain, Number(blockNumber));
+                const virtualPrice = batch.get(virtualContract) ?? null;
 
                 transactionType = 'buy';
                 typeSwap = 9;
-
                 bought = {
                     symbol: symbolOut,
                     amount: amountOut,
@@ -421,15 +451,8 @@ const createHistorySwaps = async (config, address, transactions, nativeTokenPric
         }
     }
 
-    // Check lost swaps in transfers
-    const {
-        swaps,
-        transfers
-    } = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray, nativeTokenPrice);
-    return {
-        swaps,
-        transfers
-    };
+    const {swaps, transfers} = await checkLostSwapsInTransfers(config, address, swapsArray, transfersArray, nativeTokenPrice);
+    return {swaps, transfers};
 };
 
 module.exports = {createHistorySwaps};

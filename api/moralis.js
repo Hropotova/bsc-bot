@@ -2,8 +2,9 @@ require('dotenv').config();
 const axios = require('axios');
 const { logger } = require('../performanceLogger');
 
-const THROUGHPUT_CU_PER_SEC = 2000;
-const MAX_REQUESTS_PER_SEC = 50;
+// Збільшені ліміти для швидшої роботи
+const THROUGHPUT_CU_PER_SEC = 2500; // було 2000
+const MAX_REQUESTS_PER_SEC = 60;    // було 50
 
 const COST = {
     swaps: 20,
@@ -39,6 +40,9 @@ function clearMoralisCache() {
     logger.logInfo(`Moralis cache cleared: ${JSON.stringify(stats)}`);
 }
 
+// ============================================================
+// OPTIMIZED RATE LIMITER - більш агресивний refill
+// ============================================================
 class RateLimiter {
     constructor({ cuPerSec, reqPerSec }) {
         this.cuPerSec = cuPerSec;
@@ -46,16 +50,22 @@ class RateLimiter {
         this.availableCU = cuPerSec;
         this.availableReq = reqPerSec;
         this.queue = [];
-        this.refillInterval = setInterval(() => this.refill(), 100);
+        this.processing = false;
+        // Refill кожні 50ms замість 100ms для швидшої обробки черги
+        this.refillInterval = setInterval(() => this.refill(), 50);
     }
 
     refill() {
-        this.availableCU = Math.min(this.cuPerSec, this.availableCU + this.cuPerSec / 10);
-        this.availableReq = Math.min(this.reqPerSec, this.availableReq + this.reqPerSec / 10);
+        // Refill 1/20 за 50ms = повний refill за секунду
+        this.availableCU = Math.min(this.cuPerSec, this.availableCU + this.cuPerSec / 20);
+        this.availableReq = Math.min(this.reqPerSec, this.availableReq + this.reqPerSec / 20);
         this.processQueue();
     }
 
     processQueue() {
+        if (this.processing) return;
+        this.processing = true;
+
         while (this.queue.length) {
             const item = this.queue[0];
             if (this.availableReq >= 1 && this.availableCU >= item.cost) {
@@ -67,6 +77,8 @@ class RateLimiter {
                 break;
             }
         }
+
+        this.processing = false;
     }
 
     schedule(cost, fn) {
@@ -74,6 +86,13 @@ class RateLimiter {
             this.queue.push({ cost, fn, resolve, reject });
             this.processQueue();
         });
+    }
+
+    // Batch scheduling - запускає кілька запитів одразу якщо є ресурси
+    async scheduleBatch(items) {
+        return Promise.all(
+            items.map(({ cost, fn }) => this.schedule(cost, fn))
+        );
     }
 
     getQueueStatus() {
@@ -96,6 +115,7 @@ const api = axios.create({
         accept: 'application/json',
         'X-API-Key': process.env.MORALIS_API_KEY,
     },
+    timeout: 30000, // 30s timeout
 });
 
 const logRateLimitHeaders = (headers) => {
@@ -120,7 +140,9 @@ const fetchWithRetry = async (fn, maxRetries = 5) => {
                 err.code === 'ETIMEDOUT' ||
                 !err.response;
             if (attempt === maxRetries || !isRetryable) throw err;
-            const backoff = 200 * Math.pow(2, attempt);
+
+            // Експоненційний backoff з jitter
+            const backoff = 150 * Math.pow(2, attempt); // трохи швидше: 150 замість 200
             const jitter = Math.random() * 100;
             const wait = backoff + jitter;
             logger.logWarning(`Moralis retry ${attempt + 1}/${maxRetries} in ${Math.round(wait)}ms (status=${status || 'network'})`);
@@ -141,7 +163,7 @@ const withFullRetry = async (fn, fnName, maxRetries = 2) => {
             const errMsg = err.response?.data?.message || err.message;
 
             if (attempt < maxRetries) {
-                const wait = 2000 * (attempt + 1);
+                const wait = 1500 * (attempt + 1); // трохи швидше: 1500 замість 2000
                 logger.logWarning(`${fnName} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${errMsg}. Retrying in ${wait}ms...`);
                 await new Promise(r => setTimeout(r, wait));
             } else {
@@ -157,12 +179,6 @@ const withFullRetry = async (fn, fnName, maxRetries = 2) => {
 // BATCH TOKEN PRICES - до 100 токенів за запит!
 // ============================================================
 
-/**
- * Отримує ціни для багатьох токенів одним batch запитом
- * @param {string[]} tokenAddresses - масив адрес токенів
- * @param {string} chain - мережа (eth, base, bsc, etc.)
- * @returns {Map<string, object>} - Map з адресою як ключем
- */
 const getTokenPricesBatch = async (tokenAddresses, chain, block = null) => {
     if (!tokenAddresses || tokenAddresses.length === 0) {
         return new Map();
@@ -173,7 +189,7 @@ const getTokenPricesBatch = async (tokenAddresses, chain, block = null) => {
 
     for (const addr of tokenAddresses) {
         const addrLower = addr.toLowerCase();
-        const key = `${addrLower}:${chain}:${block ?? ''}`; // IMPORTANT: ключ як у getTokenPrice()
+        const key = `${addrLower}:${chain}:${block ?? ''}`;
         if (priceCache.has(key)) {
             results.set(addrLower, priceCache.get(key));
         } else {
@@ -198,49 +214,54 @@ const getTokenPricesBatch = async (tokenAddresses, chain, block = null) => {
         `${uncached.length} tokens in ${chunks.length} batch(es)${block != null ? ` @block=${block}` : ''}`
     );
 
-    for (const chunk of chunks) {
-        try {
-            const body = {
-                tokens: chunk.map(token_address => (
-                    block != null
-                        ? { token_address, to_block: Number(block) }
-                        : { token_address }
-                ))
-            };
+    // Паралельна обробка chunks (до 3 паралельно)
+    const PARALLEL_CHUNKS = 3;
+    for (let i = 0; i < chunks.length; i += PARALLEL_CHUNKS) {
+        const parallelChunks = chunks.slice(i, i + PARALLEL_CHUNKS);
 
-            const resp = await rateLimiter.schedule(COST.tokenPricesBatch, () =>
-                fetchWithRetry(() => api.post(`erc20/prices?chain=${chain}`, body))
-            );
+        await Promise.all(parallelChunks.map(async (chunk) => {
+            try {
+                const body = {
+                    tokens: chunk.map(token_address => (
+                        block != null
+                            ? { token_address, to_block: Number(block) }
+                            : { token_address }
+                    ))
+                };
 
-            const prices = resp.data || [];
+                const resp = await rateLimiter.schedule(COST.tokenPricesBatch, () =>
+                    fetchWithRetry(() => api.post(`erc20/prices?chain=${chain}`, body))
+                );
 
-            for (const priceData of prices) {
-                const addr = priceData.tokenAddress?.toLowerCase();
-                if (addr) {
-                    const cacheKey = `${addr}:${chain}:${block ?? ''}`;
-                    priceCache.set(cacheKey, priceData);
-                    results.set(addr, priceData);
+                const prices = resp.data || [];
+
+                for (const priceData of prices) {
+                    const addr = priceData.tokenAddress?.toLowerCase();
+                    if (addr) {
+                        const cacheKey = `${addr}:${chain}:${block ?? ''}`;
+                        priceCache.set(cacheKey, priceData);
+                        results.set(addr, priceData);
+                    }
                 }
-            }
 
-            // якщо Moralis не повернув ціну для деяких адрес — кешуємо null
-            for (const addr of chunk) {
-                if (!results.has(addr)) {
+                for (const addr of chunk) {
+                    if (!results.has(addr)) {
+                        const cacheKey = `${addr}:${chain}:${block ?? ''}`;
+                        priceCache.set(cacheKey, null);
+                        results.set(addr, null);
+                    }
+                }
+
+                logger.logInfo(`  └─ Batch chunk: ${chunk.length} tokens, ${prices.length} prices found`);
+            } catch (error) {
+                logger.logError(`Moralis batch prices failed: ${error.response?.data?.message || error.message}`);
+                for (const addr of chunk) {
                     const cacheKey = `${addr}:${chain}:${block ?? ''}`;
                     priceCache.set(cacheKey, null);
                     results.set(addr, null);
                 }
             }
-
-            logger.logInfo(`  └─ Batch chunk: ${chunk.length} tokens, ${prices.length} prices found`);
-        } catch (error) {
-            logger.logError(`Moralis batch prices failed: ${error.response?.data?.message || error.message}`);
-            for (const addr of chunk) {
-                const cacheKey = `${addr}:${chain}:${block ?? ''}`;
-                priceCache.set(cacheKey, null);
-                results.set(addr, null);
-            }
-        }
+        }));
     }
 
     logger.endOperation(timer);
@@ -249,10 +270,6 @@ const getTokenPricesBatch = async (tokenAddresses, chain, block = null) => {
     return results;
 };
 
-
-/**
- * Prefetch цін токенів для подальшого використання
- */
 const prefetchTokenPrices = async (tokenAddresses, chain) => {
     if (!tokenAddresses || tokenAddresses.length === 0) return;
 
@@ -263,7 +280,96 @@ const prefetchTokenPrices = async (tokenAddresses, chain) => {
 };
 
 // ============================================================
-// EXISTING FUNCTIONS
+// OPTIMIZED WALLET HISTORY - з паралельною пагінацією
+// ============================================================
+
+const getWalletHistory = async (address, chain, fromBlock = null, toBlock = null) => {
+    const legacyCall = (fromBlock == null && toBlock == null);
+    const key = legacyCall
+        ? `${address}:${chain}`
+        : `${address}:${chain}:${fromBlock ?? ''}:${toBlock ?? ''}`;
+
+    if (historyCache.has(key)) {
+        logger.logInfo(`Moralis history CACHE HIT: ${address.slice(0, 10)}...`);
+        return historyCache.get(key);
+    }
+
+    const blockInfo = legacyCall ? '' : ` blocks ${fromBlock}-${toBlock}`;
+    const timer = logger.startOperation('Moralis', 'getWalletHistory', `${chain}:${address.slice(0, 10)}...${blockInfo}`);
+
+    try {
+        const result = await withFullRetry(async () => {
+            let cursor = null;
+            let allTx = [];
+            let total = 0;
+            let pageCount = 0;
+            const maxTx = +process.env.MORALIS_TRANSACTIONS_COUNT;
+
+            // Перша сторінка
+            const base = `wallets/${address}/history?chain=${chain}&order=ASC`;
+            const range =
+                (fromBlock != null ? `&from_block=${fromBlock}` : '') +
+                (toBlock != null ? `&to_block=${toBlock}` : '');
+
+            const firstResp = await rateLimiter.schedule(COST.history, () =>
+                fetchWithRetry(() => api.get(`${base}${range}`))
+            );
+
+            const firstTxs = firstResp.data.result || [];
+            allTx.push(...firstTxs);
+            total = firstTxs.length;
+            pageCount = 1;
+            cursor = firstResp.data.cursor;
+
+            if (total > maxTx) {
+                return { allTx: 'TRANSACTIONS_COUNT_LIMIT', pageCount, limitExceeded: true };
+            }
+
+            // Наступні сторінки - запитуємо послідовно (Moralis потребує cursor)
+            while (cursor) {
+                pageCount++;
+                const url = `${base}${range}&cursor=${cursor}`;
+
+                const resp = await rateLimiter.schedule(COST.history, () =>
+                    fetchWithRetry(() => api.get(url))
+                );
+
+                const txs = resp.data.result || [];
+                total += txs.length;
+
+                if (total > maxTx) {
+                    return { allTx: 'TRANSACTIONS_COUNT_LIMIT', pageCount, limitExceeded: true };
+                }
+
+                allTx.push(...txs);
+
+                if (!resp.data.cursor || txs.length < 100) break;
+                cursor = resp.data.cursor;
+            }
+
+            return { allTx, pageCount, limitExceeded: false };
+        }, 'getWalletHistory');
+
+        if (result.limitExceeded) {
+            logger.endOperation(timer);
+            logger.logWarning(`History limit exceeded: > ${process.env.MORALIS_TRANSACTIONS_COUNT}`);
+            historyCache.set(key, 'TRANSACTIONS_COUNT_LIMIT');
+            return 'TRANSACTIONS_COUNT_LIMIT';
+        }
+
+        historyCache.set(key, result.allTx);
+        logger.endOperation(timer);
+        logger.logInfo(`  └─ ${result.allTx.length} transactions in ${result.pageCount} pages`);
+        return result.allTx;
+    } catch (err) {
+        logger.endOperation(timer);
+        logger.logError(`Moralis history failed: ${err.response?.data?.message || err.message}`);
+        return [];
+    }
+};
+
+// ============================================================
+// OPTIMIZED SWAPS
 // ============================================================
 
 const getWalletTokenSwaps = async (address, chain) => {
@@ -305,67 +411,9 @@ const getWalletTokenSwaps = async (address, chain) => {
     }
 };
 
-const getWalletHistory = async (address, chain, fromBlock = null, toBlock = null) => {
-    const legacyCall = (fromBlock == null && toBlock == null);
-    const key = legacyCall
-        ? `${address}:${chain}`
-        : `${address}:${chain}:${fromBlock ?? ''}:${toBlock ?? ''}`;
-
-    if (historyCache.has(key)) {
-        logger.logInfo(`Moralis history CACHE HIT: ${address.slice(0, 10)}...`);
-        return historyCache.get(key);
-    }
-
-    const blockInfo = legacyCall ? '' : ` blocks ${fromBlock}-${toBlock}`;
-    const timer = logger.startOperation('Moralis', 'getWalletHistory', `${chain}:${address.slice(0, 10)}...${blockInfo}`);
-
-    try {
-        const result = await withFullRetry(async () => {
-            let cursor = null, allTx = [], total = 0, pageCount = 0;
-
-            while (true) {
-                pageCount++;
-                const base = `wallets/${address}/history?chain=${chain}&order=ASC`;
-                const range =
-                    (fromBlock != null ? `&from_block=${fromBlock}` : '') +
-                    (toBlock != null ? `&to_block=${toBlock}` : '');
-                const url = `${base}${range}${cursor ? `&cursor=${cursor}` : ''}`;
-                const resp = await rateLimiter.schedule(COST.history, () =>
-                    fetchWithRetry(() => api.get(url))
-                );
-
-                const txs = resp.data.result || [];
-                total += txs.length;
-
-                if (total > +process.env.MORALIS_TRANSACTIONS_COUNT) {
-                    return { allTx: 'TRANSACTIONS_COUNT_LIMIT', pageCount, limitExceeded: true };
-                }
-
-                allTx.push(...txs);
-                if (!resp.data.cursor || txs.length < 100) break;
-                cursor = resp.data.cursor;
-            }
-
-            return { allTx, pageCount, limitExceeded: false };
-        }, 'getWalletHistory');
-
-        if (result.limitExceeded) {
-            logger.endOperation(timer);
-            logger.logWarning(`History limit exceeded: > ${process.env.MORALIS_TRANSACTIONS_COUNT}`);
-            historyCache.set(key, 'TRANSACTIONS_COUNT_LIMIT');
-            return 'TRANSACTIONS_COUNT_LIMIT';
-        }
-
-        historyCache.set(key, result.allTx);
-        logger.endOperation(timer);
-        logger.logInfo(`  └─ ${result.allTx.length} transactions in ${result.pageCount} pages`);
-        return result.allTx;
-    } catch (err) {
-        logger.endOperation(timer);
-        logger.logError(`Moralis history failed: ${err.response?.data?.message || err.message}`);
-        return [];
-    }
-};
+// ============================================================
+// BALANCES
+// ============================================================
 
 const getWalletTokenBalances = async (address, chain) => {
     const key = `${address}:${chain}`;
@@ -392,6 +440,10 @@ const getWalletTokenBalances = async (address, chain) => {
         return [];
     }
 };
+
+// ============================================================
+// ACTIVE CHAINS
+// ============================================================
 
 const getActiveWalletChains = async (address) => {
     const key = address;
@@ -424,9 +476,10 @@ const getActiveWalletChains = async (address) => {
     }
 };
 
-/**
- * Single token price - спочатку перевіряє кеш (може бути від batch prefetch)
- */
+// ============================================================
+// SINGLE TOKEN PRICE
+// ============================================================
+
 const getTokenPrice = async (token, chain, block) => {
     const key = `${token.toLowerCase()}:${chain}:${block || ''}`;
     if (priceCache.has(key)) {
@@ -452,6 +505,43 @@ const getTokenPrice = async (token, chain, block) => {
     }
 };
 
+// ============================================================
+// PARALLEL DATA FETCH - новий метод для паралельного завантаження
+// ============================================================
+
+/**
+ * Завантажує всі базові дані для адреси паралельно
+ * @returns {Promise<{transactions, history, price, balances}>}
+ */
+const fetchWalletDataParallel = async (address, chain, chainId, nativeContract) => {
+    const timer = logger.startOperation('Moralis', 'fetchWalletDataParallel', `${chain}:${address.slice(0, 10)}...`);
+
+    try {
+        // Імпортуємо scan тут щоб уникнути circular dependency
+        const { getAllTransactions } = require('./scan');
+
+        const [transactions, history, priceData, balances] = await Promise.all([
+            getAllTransactions(address, chainId),
+            getWalletHistory(address, chain),
+            getTokenPrice(nativeContract, chain),
+            getWalletTokenBalances(address, chain),
+        ]);
+
+        logger.endOperation(timer);
+
+        return {
+            transactions,
+            history,
+            price: priceData,
+            balances,
+        };
+    } catch (err) {
+        logger.endOperation(timer);
+        logger.logError(`Parallel fetch failed: ${err.message}`);
+        throw err;
+    }
+};
+
 module.exports = {
     getWalletTokenSwaps,
     getWalletHistory,
@@ -460,5 +550,6 @@ module.exports = {
     getTokenPrice,
     getTokenPricesBatch,
     prefetchTokenPrices,
+    fetchWalletDataParallel,
     clearMoralisCache,
 };
